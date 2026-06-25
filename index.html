@@ -2,45 +2,164 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Prueba Habitación Diminuta (550x252)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>PokéAventura · Habitación</title>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body {
             background: #0a1f1a;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            height: 100dvh;
             overflow: hidden;
             font-family: 'Courier New', monospace;
+            touch-action: manipulation;
+        }
+        #game-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
         }
         canvas {
-            border: 2px solid #ffb347;
-            border-radius: 16px;
-            width: 100vw;
-            height: 100vh;
-            object-fit: contain;
-            image-rendering: crisp-edges;
             display: block;
+            border: 2px solid #ffb347;
+            border-radius: 12px;
+            image-rendering: crisp-edges;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            background: black;
         }
-        .info {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
+        /* Botón pantalla completa */
+        #fullscreen-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            border: 2px solid rgba(255,255,255,0.4);
             color: white;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 12px;
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 20;
+            transition: 0.2s;
+        }
+        #fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        /* Controles táctiles */
+        .touch-controls {
+            position: absolute;
+            pointer-events: none;
             z-index: 10;
+            inset: 0;
+        }
+        .dpad {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: grid;
+            grid-template-columns: 50px 50px 50px;
+            grid-template-rows: 50px 50px 50px;
+            gap: 4px;
+            pointer-events: auto;
+        }
+        .dpad button {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 12px;
+            font-size: 24px;
+            color: rgba(255,255,255,0.9);
+            text-shadow: 0 0 6px black;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: 0.05s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .dpad button:active {
+            background: rgba(255,255,255,0.4);
+            transform: scale(0.9);
+        }
+        .dpad .empty {
+            background: transparent;
+            border: none;
+            pointer-events: none;
+        }
+        .action-btns {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 12px;
+            pointer-events: auto;
+        }
+        .action-btns button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 200, 120, 0.2);
+            backdrop-filter: blur(6px);
+            border: 2px solid rgba(255,255,255,0.4);
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0 0 6px black;
+            cursor: pointer;
+            transition: 0.05s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .action-btns button:active {
+            background: rgba(255,200,120,0.5);
+            transform: scale(0.9);
         }
     </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<div class="info">🎮 Flechas para mover a Javi | Habitación 550x252</div>
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
+    <div class="touch-controls">
+        <div class="dpad" id="dpad">
+            <button class="empty"></button>
+            <button id="btnUp">▲</button>
+            <button class="empty"></button>
+            <button id="btnLeft">◀</button>
+            <button class="empty"></button>
+            <button id="btnRight">▶</button>
+            <button class="empty"></button>
+            <button id="btnDown">▼</button>
+            <button class="empty"></button>
+        </div>
+        <div class="action-btns" id="actionBtns">
+            <button id="btnB">B</button>
+            <button id="btnA">A</button>
+        </div>
+    </div>
+</div>
 
 <script>
     (function() {
@@ -78,22 +197,28 @@
         });
 
         // ==================== DIMENSIONES ====================
-        const CELL_SIZE = 40;
-        let COLS, ROWS;
-        const MOVE_DURATION = 200;
-        const ANIM_FRAME_DURATION = 120;
-        const VERTICAL_OFFSET_SOL = 0;
+        const CELL_SIZE = 20;                 // celdas más pequeñas
+        const MOVE_DURATION = 250;           // ms por paso (más lento)
+        const ANIM_FRAME_DURATION = 150;     // alternancia de sprites
         const JAVI_DRAW_WIDTH = 44;
         const JAVI_DRAW_HEIGHT = 70;
         const SOL_DRAW_WIDTH = 40;
         const SOL_DRAW_HEIGHT = 63;
+        const VERTICAL_OFFSET_SOL = 0;
 
-        // Capa de colisión (por ahora vacía, luego la llenaremos con rectángulos)
+        let COLS, ROWS;
+        let gameReady = false;
+
+        // Cámara (preparada para scroll, aunque ahora el mapa = canvas)
+        let camera = { x: 0, y: 0 };
+        let mapWidth, mapHeight;   // se igualan al tamaño del fondo
+
+        // Colisiones (por ahora vacías)
         let collisionRects = [];
 
         // ==================== ESTADO ====================
         let javi = {
-            col: 7, row: 4,
+            col: 13, row: 6,
             faceDir: 'frente',
             moving: false,
             stepFrame: 0,
@@ -102,7 +227,7 @@
             moveStartTime: 0
         };
         let sol = {
-            col: 6, row: 4,
+            col: 12, row: 6,
             faceDir: 'frente',
             moving: false,
             stepFrame: 0,
@@ -113,7 +238,6 @@
         };
 
         let activeDir = { dx: 0, dy: 0 };
-        let gameReady = false;
 
         // ==================== FUNCIONES ====================
         function getCellCenter(col, row) {
@@ -122,37 +246,30 @@
                 y: row * CELL_SIZE + CELL_SIZE
             };
         }
-        function getCharPos(col, row, isSol) {
-            const c = getCellCenter(col, row);
-            return { x: c.x, y: c.y + (isSol ? VERTICAL_OFFSET_SOL : 0) };
-        }
-
-        function startMove(ch, targetCol, targetRow) {
-            const start = getCharPos(ch.col, ch.row, ch === sol);
-            const end = getCharPos(targetCol, targetRow, ch === sol);
-            ch.moving = true;
-            ch.moveStartX = start.x; ch.moveStartY = start.y;
-            ch.moveEndX = end.x; ch.moveEndY = end.y;
-            ch.moveStartTime = performance.now();
-            ch.col = targetCol; ch.row = targetRow;
-            ch.stepFrame = 0;
-        }
 
         function isCellBlocked(col, row) {
-            // Verificar si el centro de la celda cae dentro de algún rectángulo de colisión
-            const cx = col * CELL_SIZE + CELL_SIZE / 2;
-            const cy = row * CELL_SIZE + CELL_SIZE / 2;
+            const cx = col * CELL_SIZE + CELL_SIZE/2;
+            const cy = row * CELL_SIZE + CELL_SIZE/2;
             for (let r of collisionRects) {
-                if (cx >= r.x && cx <= r.x + r.w &&
-                    cy >= r.y && cy <= r.y + r.h) {
-                    return true;
-                }
+                if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) return true;
             }
             return false;
         }
 
         function canMoveTo(col, row) {
             return col >= 0 && col < COLS && row >= 0 && row < ROWS && !isCellBlocked(col, row);
+        }
+
+        function startMove(ch, targetCol, targetRow) {
+            const start = getCellCenter(ch.col, ch.row);
+            const end = getCellCenter(targetCol, targetRow);
+            ch.moving = true;
+            ch.moveStartX = start.x; ch.moveStartY = start.y;
+            ch.moveEndX = end.x; ch.moveEndY = end.y;
+            ch.moveStartTime = performance.now();
+            ch.col = targetCol;
+            ch.row = targetRow;
+            ch.stepFrame = 0;
         }
 
         function tryMoveJavi() {
@@ -169,6 +286,7 @@
 
             startMove(javi, nc, nr);
             updateSolTarget();
+            updateCamera();
         }
 
         function updateSolTarget() {
@@ -181,22 +299,27 @@
             tc = Math.max(0, Math.min(COLS-1, tc));
             tr = Math.max(0, Math.min(ROWS-1, tr));
 
-            // No bloquear a Sol por colisiones (si queremos que ella pueda atravesar muebles o no)
             if (isCellBlocked(tc, tr)) {
-                // Si la celda deseada está bloqueada, buscar una alternativa cercana
-                // Por ahora, simplemente no moverse
                 sol.faceDir = (sol.col === javi.col && sol.row === javi.row) ? 'frente' : javi.faceDir;
                 return;
             }
 
             sol.faceDir = (tc === javi.col && tr === javi.row) ? 'frente' : javi.faceDir;
-
             if (!sol.moving && (sol.col !== tc || sol.row !== tr)) {
                 startMove(sol, tc, tr);
             } else if (!sol.moving) {
                 sol.faceDir = (sol.col === javi.col && sol.row === javi.row) ? 'frente' : javi.faceDir;
             }
             sol.targetCol = tc; sol.targetRow = tr;
+        }
+
+        function updateCamera() {
+            // Centrar cámara en Javi (en píxeles)
+            let targetX = javi.col * CELL_SIZE + CELL_SIZE/2 - canvas.width/2;
+            let targetY = javi.row * CELL_SIZE + CELL_SIZE/2 - canvas.height/2;
+            // Limitar a los bordes del mapa
+            camera.x = Math.max(0, Math.min(targetX, mapWidth - canvas.width));
+            camera.y = Math.max(0, Math.min(targetY, mapHeight - canvas.height));
         }
 
         function updateAnimation(ch, now) {
@@ -217,67 +340,48 @@
         // ==================== DIBUJO ====================
         function drawBackground() {
             if (fondo.complete && fondo.naturalWidth > 0) {
-                ctx.drawImage(fondo, 0, 0);
+                // Dibujar el fondo desplazado según la cámara
+                ctx.drawImage(fondo, -camera.x, -camera.y);
             } else {
                 ctx.fillStyle = '#2d6a4f';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-            // Cuadrícula tenue (opcional, para debug)
-            ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-            ctx.lineWidth = 0.5;
-            for (let c = 0; c <= COLS; c++) {
-                ctx.beginPath();
-                ctx.moveTo(c * CELL_SIZE, 0);
-                ctx.lineTo(c * CELL_SIZE, canvas.height);
-                ctx.stroke();
-            }
-            for (let r = 0; r <= ROWS; r++) {
-                ctx.beginPath();
-                ctx.moveTo(0, r * CELL_SIZE);
-                ctx.lineTo(canvas.width, r * CELL_SIZE);
-                ctx.stroke();
-            }
-            // Dibujar rectángulos de colisión (opaco, solo para debug)
-            ctx.fillStyle = 'rgba(255,0,0,0.2)';
-            for (let r of collisionRects) {
-                ctx.fillRect(r.x, r.y, r.w, r.h);
             }
         }
 
         function drawChar(ch, isSol) {
             const dirMap = { frente:'Frente', atras:'Atras', izquierda:'Izquierda', derecha:'Derecha' };
             let key = (isSol ? 'sol' : 'javi') + dirMap[ch.faceDir];
-            if (ch.moving) {
-                key += (ch.stepFrame % 2 === 0) ? '' : 'Caminando';
-            }
+            if (ch.moving) key += (ch.stepFrame % 2 === 0) ? '' : 'Caminando';
             const img = loadedImages[key];
 
-            let x, y;
+            // Posición en el mundo (relativa a la cámara)
+            let worldX, worldY;
             if (ch.moving) {
                 const now = performance.now();
                 const t = Math.min((now - ch.moveStartTime) / MOVE_DURATION, 1);
-                x = ch.moveStartX + (ch.moveEndX - ch.moveStartX) * t;
-                y = ch.moveStartY + (ch.moveEndY - ch.moveStartY) * t;
+                worldX = ch.moveStartX + (ch.moveEndX - ch.moveStartX) * t;
+                worldY = ch.moveStartY + (ch.moveEndY - ch.moveStartY) * t;
             } else {
-                const pos = getCharPos(ch.col, ch.row, isSol);
-                x = pos.x; y = pos.y;
+                const center = getCellCenter(ch.col, ch.row);
+                worldX = center.x;
+                worldY = center.y + (isSol ? VERTICAL_OFFSET_SOL : 0);
             }
+            const screenX = worldX - camera.x;
+            const screenY = worldY - camera.y;
 
             const boxW = isSol ? SOL_DRAW_WIDTH : JAVI_DRAW_WIDTH;
             const boxH = isSol ? SOL_DRAW_HEIGHT : JAVI_DRAW_HEIGHT;
 
             if (img && img.complete && img.naturalWidth > 0) {
-                const imgW = img.naturalWidth;
-                const imgH = img.naturalHeight;
-                const scale = Math.min(boxW / imgW, boxH / imgH);
-                const drawW = imgW * scale;
-                const drawH = imgH * scale;
+                const scale = Math.min(boxW / img.naturalWidth, boxH / img.naturalHeight);
+                const drawW = img.naturalWidth * scale;
+                const drawH = img.naturalHeight * scale;
                 const offsetX = (boxW - drawW) / 2;
                 const offsetY = boxH - drawH;
-                ctx.drawImage(img, x - boxW/2 + offsetX, y - boxH + offsetY, drawW, drawH);
+                ctx.drawImage(img, screenX - boxW/2 + offsetX, screenY - boxH + offsetY, drawW, drawH);
             } else {
                 ctx.fillStyle = isSol ? '#f9a' : '#2b6';
-                ctx.fillRect(x - boxW/2, y - boxH, boxW, boxH);
+                ctx.fillRect(screenX - boxW/2, screenY - boxH, boxW, boxH);
             }
         }
 
@@ -296,6 +400,7 @@
                 tryMoveJavi();
             }
 
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawBackground();
             drawChar(javi, false);
             drawChar(sol, true);
@@ -305,18 +410,76 @@
 
         // ==================== INICIALIZACIÓN ====================
         fondo.onload = () => {
-            canvas.width = fondo.naturalWidth;
-            canvas.height = fondo.naturalHeight;
-            COLS = Math.floor(canvas.width / CELL_SIZE);
-            ROWS = Math.floor(canvas.height / CELL_SIZE);
+            canvas.width = fondo.naturalWidth;   // 550
+            canvas.height = fondo.naturalHeight; // 252
+            mapWidth = canvas.width;
+            mapHeight = canvas.height;
+            COLS = Math.floor(mapWidth / CELL_SIZE);
+            ROWS = Math.floor(mapHeight / CELL_SIZE);
+            // Colocar a Javi en el centro del mapa
             javi.col = Math.floor(COLS / 2);
             javi.row = Math.floor(ROWS / 2) + 1;
             sol.col = javi.col - 1;
             sol.row = javi.row;
+            updateCamera();
             gameReady = true;
         };
 
-        // ==================== TECLADO ====================
+        // ==================== CONTROLES TÁCTILES ====================
+        function setupTouchControls() {
+            const btnUp = document.getElementById('btnUp');
+            const btnDown = document.getElementById('btnDown');
+            const btnLeft = document.getElementById('btnLeft');
+            const btnRight = document.getElementById('btnRight');
+            const btnA = document.getElementById('btnA');
+            const btnB = document.getElementById('btnB');
+
+            function addDirBtn(btn, dx, dy) {
+                let interval;
+                btn.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    activeDir.dx = dx;
+                    activeDir.dy = dy;
+                });
+                btn.addEventListener('pointerup', (e) => {
+                    e.preventDefault();
+                    if (activeDir.dx === dx && activeDir.dy === dy) {
+                        activeDir.dx = 0;
+                        activeDir.dy = 0;
+                    }
+                });
+                btn.addEventListener('pointerleave', (e) => {
+                    if (activeDir.dx === dx && activeDir.dy === dy) {
+                        activeDir.dx = 0;
+                        activeDir.dy = 0;
+                    }
+                });
+            }
+            addDirBtn(btnUp, 0, -1);
+            addDirBtn(btnDown, 0, 1);
+            addDirBtn(btnLeft, -1, 0);
+            addDirBtn(btnRight, 1, 0);
+
+            // Botón A para interactuar (por ahora placeholder)
+            btnA.addEventListener('click', () => {
+                console.log('A presionado (interactuar)');
+            });
+
+            // Botón B para correr o cancelar (placeholder)
+            btnB.addEventListener('pointerdown', () => { /* correr */ });
+            btnB.addEventListener('pointerup', () => { /* dejar de correr */ });
+        }
+
+        // ==================== PANTALLA COMPLETA ====================
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // ==================== TECLADO (para desarrollo) ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
@@ -341,6 +504,7 @@
             }
         });
 
+        setupTouchControls();
         requestAnimationFrame(loop);
     })();
 </script>
