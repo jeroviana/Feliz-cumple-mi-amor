@@ -33,8 +33,10 @@
         }
         canvas {
             display: block;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
             image-rendering: crisp-edges;
-            /* Sin object-fit, el tamaño lo define JS */
         }
         /* Botón pantalla completa */
         #fullscreen-btn {
@@ -167,7 +169,7 @@
             font-weight: bold;
             cursor: pointer;
         }
-        /* Nube de pensamiento (cómic) */
+        /* Nube de pensamiento */
         .thought-cloud {
             position: absolute;
             background: white;
@@ -198,7 +200,7 @@
             border-top-color: white;
             border-bottom: 0;
         }
-        /* Botón volver (temporal para pruebas) */
+        /* Botón volver */
         #back-btn {
             position: absolute;
             top: 15px;
@@ -256,7 +258,7 @@
         const MOVE_DURATION = 200;
         const ANIM_FRAME_DURATION = 120;
         const CAMERA_MARGIN = 4 * CELL_SIZE;
-        const CAMERA_SMOOTH = 0.25; // más reactivo
+        const CAMERA_SMOOTH = 0.2;
 
         const JAVI_DRAW_WIDTH = 88;
         const JAVI_DRAW_HEIGHT = 140;
@@ -282,32 +284,29 @@
             loadedImages[key] = img;
         });
 
-        // ==================== POLÍGONO DEL PISO ====================
-        const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
-        const floorPolygon = [];
-        for (let i = 0; i < floorRaw.length; i += 2) {
-            floorPolygon.push({
-                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
-                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
-            });
-        }
+        // ==================== OBSTÁCULOS (rectángulos intransitables) ====================
+        const blockedRects = [
+            { col1: 38, row1: 5, col2: 49, row2: 9 },   // escritorio
+            { col1: 0, row1: 1, col2: 9, row2: 24 }     // placard
+            // Podés agregar más rectángulos (cama, paredes) cuando quieras
+        ];
 
-        // Objetos interactivos (aseguramos que estén sobre el piso)
+        // Objetos interactivos (todos accesibles desde celdas adyacentes)
         const interactiveObjects = [
             {
                 id: 'escritorio',
-                type: 'rect', col1: 38, row1: 5, col2: 49, row2: 9,
+                rect: { col1: 38, row1: 5, col2: 49, row2: 9 },
                 interaction: { type: 'modal', text: '"No se puede disfrutar de un buen juego sin los recursos necesarios"' },
                 required: true, once: true
             },
             {
                 id: 'placard',
-                type: 'rect', col1: 0, row1: 1, col2: 9, row2: 24,
+                rect: { col1: 0, row1: 1, col2: 9, row2: 24 },
                 interaction: { type: 'thought', text: '¿Dónde estarán todos mis hoodies...?' }
             },
             {
                 id: 'alfombra',
-                type: 'rect', col1: 10, row1: 22, col2: 15, row2: 24,
+                rect: { col1: 10, row1: 22, col2: 15, row2: 24 },
                 interaction: { type: 'exit', target: 'plantaBaja', condition: () => gameState.flags.setupGamer }
             }
         ];
@@ -326,42 +325,17 @@
         };
 
         // ==================== UTILIDADES ====================
-        function pointInPolygon(px, py, poly) {
-            let inside = false;
-            for (let i = 0, j = poly.length-1; i < poly.length; j = i++) {
-                const xi = poly[i].x, yi = poly[i].y;
-                const xj = poly[j].x, yj = poly[j].y;
-                const intersect = ((yi > py) !== (yj > py)) &&
-                    (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
-                if (intersect) inside = !inside;
-            }
-            return inside;
-        }
-
         function isWalkable(col, row) {
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-            const px = col * CELL_SIZE + CELL_SIZE/2;
-            const py = row * CELL_SIZE + CELL_SIZE/2;
-            return pointInPolygon(px, py, floorPolygon);
+            // Bloqueado por algún rectángulo?
+            for (let r of blockedRects) {
+                if (col >= r.col1 && col <= r.col2 && row >= r.row1 && row <= r.row2) return false;
+            }
+            return true;
         }
 
         function getCellCenter(col, row) {
             return { x: col * CELL_SIZE + CELL_SIZE/2, y: row * CELL_SIZE + CELL_SIZE };
-        }
-
-        function findNearestWalkable(col, row) {
-            if (isWalkable(col, row)) return {col, row};
-            for (let r = 1; r < 10; r++) {
-                for (let dc = -r; dc <= r; dc++) {
-                    for (let dr = -r; dr <= r; dr++) {
-                        if (Math.abs(dc)+Math.abs(dr) === r) {
-                            const nc = col+dc, nr = row+dr;
-                            if (isWalkable(nc, nr)) return {col: nc, row: nr};
-                        }
-                    }
-                }
-            }
-            return {col:12, row:7};
         }
 
         // ==================== MOVIMIENTO ====================
@@ -419,16 +393,13 @@
         function getNearbyInteractive() {
             const j = gameState.javi;
             for (let obj of interactiveObjects) {
-                const {col1, row1, col2, row2} = obj;
+                const {col1, row1, col2, row2} = obj.rect;
+                // Distancia Chebyshev ≤ 1
                 if (j.col >= col1 - 1 && j.col <= col2 + 1 && j.row >= row1 - 1 && j.row <= row2 + 1) {
                     return obj;
                 }
             }
             return null;
-        }
-
-        function isNearInteractive() {
-            return getNearbyInteractive() !== null;
         }
 
         function interactWithObject(obj) {
@@ -527,7 +498,7 @@
             ctx.restore();
 
             // Brillo del botón A
-            if (isNearInteractive()) {
+            if (getNearbyInteractive()) {
                 btnA.classList.add('glow');
             } else {
                 btnA.classList.remove('glow');
@@ -595,33 +566,15 @@
 
         // ==================== AJUSTE DE VENTANA ====================
         function resizeCanvas() {
-            const container = document.getElementById('game-container');
-            const containerWidth = container.clientWidth;
-            const containerHeight = container.clientHeight;
-
-            // Forzar que el canvas use toda la altura del contenedor
-            canvas.height = containerHeight;
-            // Ancho proporcional al mapa (MAP_WIDTH / MAP_HEIGHT)
-            const mapRatio = MAP_WIDTH / MAP_HEIGHT;
-            canvas.width = containerHeight * mapRatio;
-
-            // Si el canvas es más ancho que el contenedor, permitimos scroll horizontal
-            // (el canvas se desborda, pero el contenedor tiene overflow: hidden, así que la cámara se encarga)
-            // Si es más angosto, lo centramos con margen automático
-            if (canvas.width <= containerWidth) {
-                canvas.style.margin = '0 auto';
-            } else {
-                canvas.style.margin = '0';
-            }
-
+            // El canvas se ajusta automáticamente via CSS object-fit: contain.
+            // Solo actualizamos el tamaño lógico para que coincida con el tamaño real del canvas.
             gameState.viewWidth = canvas.width;
             gameState.viewHeight = canvas.height;
             updateCamera();
         }
-
         window.addEventListener('resize', resizeCanvas);
-        // También al cambiar a pantalla completa
-        document.addEventListener('fullscreenchange', resizeCanvas);
+        // Forzar actualización cuando el canvas cambie de tamaño (por carga de imagen o fullscreen)
+        new ResizeObserver(() => resizeCanvas()).observe(canvas);
 
         // ==================== CONTROLES ====================
         function setupControls() {
@@ -715,18 +668,12 @@
                 gameState.javi.row = data.javi.row;
                 gameState.javi.faceDir = data.javi.faceDir || 'frente';
                 gameState.flags = data.flags || { setupGamer: false };
-                if (!isWalkable(gameState.javi.col, gameState.javi.row)) {
-                    const nearest = findNearestWalkable(gameState.javi.col, gameState.javi.row);
-                    gameState.javi.col = nearest.col;
-                    gameState.javi.row = nearest.row;
-                }
                 if (gameState.currentMap !== 'dormitorio') {
                     backBtn.style.display = 'block';
                 }
             } else {
-                const start = findNearestWalkable(33, 14);
-                gameState.javi.col = start.col;
-                gameState.javi.row = start.row;
+                gameState.javi.col = 33;
+                gameState.javi.row = 14;
             }
         }
 
@@ -734,8 +681,9 @@
         function init() {
             loadGame();
             setupControls();
-            resizeCanvas();
+            // El canvas se dimensiona solo con CSS; esperamos a que esté listo
             gameState.gameReady = true;
+            resizeCanvas();
             updateCamera();
             requestAnimationFrame(loop);
         }
