@@ -36,9 +36,7 @@
             border: 2px solid #ffb347;
             border-radius: 12px;
             image-rendering: crisp-edges;
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
+            /* El tamaño se ajusta por JS; no usar object-fit */
             background: black;
         }
         /* Botón pantalla completa */
@@ -241,7 +239,7 @@
         // ==================== CONFIGURACIÓN ====================
         const CELL_SIZE = 20;
         const MAP_WIDTH = 1100;
-        const MAP_HEIGHT = 504;
+        const MAP_HEIGHT = 504;   // alto total del paisaje
         const COLS = MAP_WIDTH / CELL_SIZE;
         const ROWS = MAP_HEIGHT / CELL_SIZE;
         const MOVE_DURATION = 200;
@@ -273,7 +271,7 @@
             loadedImages[key] = img;
         });
 
-        // ==================== POLÍGONO DEL PISO (el que vos definiste) ====================
+        // ==================== POLÍGONO DEL PISO ====================
         const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
         const floorPolygon = [];
         for (let i = 0; i < floorRaw.length; i += 2) {
@@ -283,7 +281,7 @@
             });
         }
 
-        // Obstáculos adicionales (objetos que no deben pisarse, pero sus bordes deben ser accesibles)
+        // Rectángulos bloqueantes (objetos sólidos)
         const blockedRects = [
             { col1: 38, row1: 5, col2: 49, row2: 9 },   // escritorio
             { col1: 0, row1: 1, col2: 9, row2: 24 }     // placard
@@ -345,13 +343,26 @@
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
             const px = col * CELL_SIZE + CELL_SIZE/2;
             const py = row * CELL_SIZE + CELL_SIZE/2;
-            // Primero, verificar el polígono del piso
             if (!pointInPolygon(px, py, floorPolygon)) return false;
-            // Luego, verificar que no esté bloqueado por un rectángulo
             for (let r of blockedRects) {
                 if (col >= r.col1 && col <= r.col2 && row >= r.row1 && row <= r.row2) return false;
             }
             return true;
+        }
+
+        function findNearestWalkable(col, row) {
+            if (isWalkable(col, row)) return {col, row};
+            for (let radius = 1; radius < 10; radius++) {
+                for (let dc = -radius; dc <= radius; dc++) {
+                    for (let dr = -radius; dr <= radius; dr++) {
+                        if (Math.abs(dc) + Math.abs(dr) === radius) {
+                            const nc = col + dc, nr = row + dr;
+                            if (isWalkable(nc, nr)) return {col: nc, row: nr};
+                        }
+                    }
+                }
+            }
+            return {col: 12, row: 7}; // fallback
         }
 
         function getCellCenter(col, row) {
@@ -479,6 +490,7 @@
             ctx.save();
             ctx.translate(-camera.x, -camera.y);
 
+            // Fondo (escalado a MAP_WIDTH x MAP_HEIGHT)
             if (fondo.complete && fondo.naturalWidth > 0) {
                 ctx.drawImage(fondo, 0, 0, MAP_WIDTH, MAP_HEIGHT);
             } else {
@@ -489,7 +501,7 @@
             drawCharacter(gameState.javi, false);
             ctx.restore();
 
-            // Brillo del botón A si hay objeto cercano
+            // Brillo del botón A
             if (getNearbyInteractive()) {
                 btnA.classList.add('glow');
             } else {
@@ -556,15 +568,41 @@
             requestAnimationFrame(loop);
         }
 
-        // ==================== AJUSTE DE VENTANA (mantenemos el tamaño natural de la imagen) ====================
-        fondo.onload = () => {
-            canvas.width = fondo.naturalWidth;   // 550
-            canvas.height = fondo.naturalHeight; // 252
+        // ==================== AJUSTE DE VENTANA (ALTO COMPLETO) ====================
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // El canvas debe ocupar toda la altura del contenedor
+            canvas.height = containerHeight;
+            // Ancho proporcional al mapa (MAP_WIDTH / MAP_HEIGHT)
+            const mapRatio = MAP_WIDTH / MAP_HEIGHT;
+            canvas.width = containerHeight * mapRatio;
+
+            // Si el canvas es más ancho que el contenedor, se permite scroll horizontal (la cámara lo maneja)
+            // Si es más angosto, se centra con margen automático
+            if (canvas.width <= containerWidth) {
+                canvas.style.margin = '0 auto';
+            } else {
+                canvas.style.margin = '0';
+            }
+
             gameState.viewWidth = canvas.width;
             gameState.viewHeight = canvas.height;
-            gameState.javi.col = Math.floor(COLS / 2);
-            gameState.javi.row = Math.floor(ROWS / 2) + 1;
             updateCamera();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        // También al cambiar a pantalla completa
+        document.addEventListener('fullscreenchange', resizeCanvas);
+
+        // ==================== INICIALIZACIÓN (SPAWN EN 33,14) ====================
+        fondo.onload = () => {
+            const startPos = findNearestWalkable(33, 14);
+            gameState.javi.col = startPos.col;
+            gameState.javi.row = startPos.row;
+            resizeCanvas();
             gameState.gameReady = true;
         };
 
@@ -621,7 +659,7 @@
             }
         });
 
-        // ==================== TECLADO (para desarrollo) ====================
+        // ==================== TECLADO ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
@@ -646,7 +684,7 @@
             }
         });
 
-        // ==================== GUARDADO (localStorage) ====================
+        // ==================== GUARDADO ====================
         function saveGame() {
             localStorage.setItem('pokeAmorSave', JSON.stringify({
                 javi: { col: gameState.javi.col, row: gameState.javi.row, faceDir: gameState.javi.faceDir },
@@ -661,6 +699,12 @@
                 gameState.javi.row = data.javi.row;
                 gameState.javi.faceDir = data.javi.faceDir || 'frente';
                 gameState.flags = data.flags || { setupGamer: false };
+                // Verificar caminabilidad
+                if (!isWalkable(gameState.javi.col, gameState.javi.row)) {
+                    const nearest = findNearestWalkable(gameState.javi.col, gameState.javi.row);
+                    gameState.javi.col = nearest.col;
+                    gameState.javi.row = nearest.row;
+                }
             }
         }
 
@@ -668,12 +712,11 @@
         function init() {
             loadGame();
             setupTouchControls();
-            // El canvas se dimensiona al cargar la imagen; mientras tanto no está listo
             if (fondo.complete) {
-                canvas.width = fondo.naturalWidth;
-                canvas.height = fondo.naturalHeight;
-                gameState.viewWidth = canvas.width;
-                gameState.viewHeight = canvas.height;
+                const startPos = findNearestWalkable(gameState.javi.col, gameState.javi.row);
+                gameState.javi.col = startPos.col;
+                gameState.javi.row = startPos.row;
+                resizeCanvas();
                 gameState.gameReady = true;
             }
             requestAnimationFrame(loop);
