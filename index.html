@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PokéAventura · Día 1</title>
+    <title>PokéAventura · Habitación</title>
     <style>
         * {
             margin: 0;
@@ -14,29 +14,32 @@
             -webkit-touch-callout: none;
         }
         body {
-            background: #000;
-            height: 200dvh;
+            background: #0a1f1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100dvh;
             overflow: hidden;
             font-family: 'Courier New', monospace;
             touch-action: manipulation;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
         #game-container {
             position: relative;
-            width: 100%;
-            height: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
+            width: 100%;
+            height: 100%;
         }
         canvas {
             display: block;
+            border: 2px solid #ffb347;
+            border-radius: 12px;
+            image-rendering: crisp-edges;
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
-            image-rendering: crisp-edges;
+            background: black;
         }
         /* Botón pantalla completa */
         #fullscreen-btn {
@@ -56,7 +59,10 @@
             justify-content: center;
             cursor: pointer;
             z-index: 20;
-            touch-action: manipulation;
+            transition: 0.2s;
+        }
+        #fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
         /* Controles táctiles */
         .touch-controls {
@@ -88,7 +94,7 @@
             justify-content: center;
             cursor: pointer;
             transition: 0.05s;
-            touch-action: none;
+            touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
         }
         .dpad button:active {
@@ -105,8 +111,9 @@
             bottom: 30px;
             right: 30px;
             display: flex;
-            flex-direction: row;
-            gap: 16px;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 12px;
             pointer-events: auto;
         }
         .action-btns button {
@@ -122,7 +129,7 @@
             text-shadow: 0 0 6px black;
             cursor: pointer;
             transition: 0.05s;
-            touch-action: none;
+            touch-action: manipulation;
             -webkit-tap-highlight-color: transparent;
         }
         .action-btns button:active {
@@ -137,6 +144,37 @@
         @keyframes pulse {
             from { box-shadow: 0 0 8px #ffb347; }
             to { box-shadow: 0 0 16px #ffb347; }
+        }
+        /* Nube de pensamiento (cómic) */
+        .thought-cloud {
+            position: absolute;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 50%;
+            padding: 12px 20px;
+            font-family: 'Comic Sans MS', 'Segoe UI', cursive;
+            font-size: 14px;
+            color: #222;
+            text-align: center;
+            white-space: pre-line;
+            z-index: 50;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            max-width: 70%;
+            left: 50%;
+            top: 15%;
+            transform: translateX(-50%);
+        }
+        .thought-cloud::after {
+            content: '';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border: 10px solid transparent;
+            border-top-color: white;
+            border-bottom: 0;
         }
         /* Modales */
         .modal {
@@ -169,60 +207,12 @@
             font-weight: bold;
             cursor: pointer;
         }
-        /* Nube de pensamiento */
-        .thought-cloud {
-            position: absolute;
-            background: white;
-            border: 2px solid #333;
-            border-radius: 50%;
-            padding: 12px 20px;
-            font-family: 'Comic Sans MS', 'Segoe UI', cursive;
-            font-size: 14px;
-            color: #222;
-            text-align: center;
-            white-space: pre-line;
-            z-index: 50;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            max-width: 70%;
-            left: 50%;
-            top: 15%;
-            transform: translateX(-50%);
-        }
-        .thought-cloud::after {
-            content: '';
-            position: absolute;
-            bottom: -20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border: 10px solid transparent;
-            border-top-color: white;
-            border-bottom: 0;
-        }
-        /* Botón volver */
-        #back-btn {
-            position: absolute;
-            top: 15px;
-            left: 15px;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
-            border: 1px solid rgba(255,255,255,0.4);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            cursor: pointer;
-            z-index: 25;
-            display: none;
-        }
     </style>
 </head>
 <body>
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
-    <button id="back-btn">← Volver a la habitación</button>
     <div class="touch-controls">
         <div class="dpad" id="dpad">
             <button class="empty"></button>
@@ -247,7 +237,6 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const btnA = document.getElementById('btnA');
-        const backBtn = document.getElementById('back-btn');
 
         // ==================== CONFIGURACIÓN ====================
         const CELL_SIZE = 20;
@@ -258,14 +247,14 @@
         const MOVE_DURATION = 200;
         const ANIM_FRAME_DURATION = 120;
         const CAMERA_MARGIN = 4 * CELL_SIZE;
-        const CAMERA_SMOOTH = 0.2;
+        const CAMERA_SMOOTH = 0.25;
 
         const JAVI_DRAW_WIDTH = 88;
         const JAVI_DRAW_HEIGHT = 140;
 
         // ==================== IMÁGENES ====================
-        const fondoHabitacion = new Image();
-        fondoHabitacion.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
+        const fondo = new Image();
+        fondo.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
 
         const SPRITE_URLS = {
             javiFrente: 'https://i.postimg.cc/s2ZVkrzx/JAVIF.png',
@@ -284,20 +273,29 @@
             loadedImages[key] = img;
         });
 
-        // ==================== OBSTÁCULOS (rectángulos intransitables) ====================
+        // ==================== POLÍGONO DEL PISO (el que vos definiste) ====================
+        const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
+        const floorPolygon = [];
+        for (let i = 0; i < floorRaw.length; i += 2) {
+            floorPolygon.push({
+                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
+                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
+            });
+        }
+
+        // Obstáculos adicionales (objetos que no deben pisarse, pero sus bordes deben ser accesibles)
         const blockedRects = [
             { col1: 38, row1: 5, col2: 49, row2: 9 },   // escritorio
             { col1: 0, row1: 1, col2: 9, row2: 24 }     // placard
-            // Podés agregar más rectángulos (cama, paredes) cuando quieras
         ];
 
-        // Objetos interactivos (todos accesibles desde celdas adyacentes)
+        // Objetos interactivos
         const interactiveObjects = [
             {
                 id: 'escritorio',
                 rect: { col1: 38, row1: 5, col2: 49, row2: 9 },
                 interaction: { type: 'modal', text: '"No se puede disfrutar de un buen juego sin los recursos necesarios"' },
-                required: true, once: true
+                once: true
             },
             {
                 id: 'placard',
@@ -307,27 +305,49 @@
             {
                 id: 'alfombra',
                 rect: { col1: 10, row1: 22, col2: 15, row2: 24 },
-                interaction: { type: 'exit', target: 'plantaBaja', condition: () => gameState.flags.setupGamer }
+                interaction: { type: 'exit', text: '¿Deseas salir de la habitación?' }
             }
         ];
 
         // ==================== ESTADO ====================
         let gameState = {
-            currentMap: 'dormitorio',
-            javi: { col: 33, row: 14, faceDir: 'frente', moving: false, stepFrame: 0,
-                    moveStartX:0, moveStartY:0, moveEndX:0, moveEndY:0, moveStartTime:0 },
+            javi: {
+                col: 33, row: 14,
+                faceDir: 'frente',
+                moving: false,
+                stepFrame: 0,
+                moveStartX: 0, moveStartY: 0,
+                moveEndX: 0, moveEndY: 0,
+                moveStartTime: 0
+            },
             flags: { setupGamer: false },
-            camera: { x:0, y:0 },
-            activeDir: { dx:0, dy:0 },
+            camera: { x: 0, y: 0 },
+            activeDir: { dx: 0, dy: 0 },
             viewWidth: MAP_WIDTH,
             viewHeight: MAP_HEIGHT,
             gameReady: false
         };
 
         // ==================== UTILIDADES ====================
+        function pointInPolygon(px, py, poly) {
+            let inside = false;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const xi = poly[i].x, yi = poly[i].y;
+                const xj = poly[j].x, yj = poly[j].y;
+                const intersect = ((yi > py) !== (yj > py)) &&
+                    (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
         function isWalkable(col, row) {
             if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-            // Bloqueado por algún rectángulo?
+            const px = col * CELL_SIZE + CELL_SIZE/2;
+            const py = row * CELL_SIZE + CELL_SIZE/2;
+            // Primero, verificar el polígono del piso
+            if (!pointInPolygon(px, py, floorPolygon)) return false;
+            // Luego, verificar que no esté bloqueado por un rectángulo
             for (let r of blockedRects) {
                 if (col >= r.col1 && col <= r.col2 && row >= r.row1 && row <= r.row2) return false;
             }
@@ -346,7 +366,8 @@
             ch.moveStartX = start.x; ch.moveStartY = start.y;
             ch.moveEndX = end.x; ch.moveEndY = end.y;
             ch.moveStartTime = performance.now();
-            ch.col = targetCol; ch.row = targetRow;
+            ch.col = targetCol;
+            ch.row = targetRow;
             ch.stepFrame = 0;
         }
 
@@ -394,7 +415,6 @@
             const j = gameState.javi;
             for (let obj of interactiveObjects) {
                 const {col1, row1, col2, row2} = obj.rect;
-                // Distancia Chebyshev ≤ 1
                 if (j.col >= col1 - 1 && j.col <= col2 + 1 && j.row >= row1 - 1 && j.row <= row2 + 1) {
                     return obj;
                 }
@@ -418,8 +438,9 @@
                 if (!gameState.flags.setupGamer) {
                     showModal('Todavía hay que explorar este espacio un poco más');
                 } else {
-                    showModal('¿Deseas salir de la habitación?', () => {
-                        transitionToMap('plantaBaja');
+                    showModal(inter.text, () => {
+                        // Transición a planta baja (placeholder)
+                        alert('Próximamente: Planta baja');
                     }, true);
                 }
             }
@@ -451,25 +472,6 @@
             setTimeout(() => cloud.remove(), 3000);
         }
 
-        function transitionToMap(mapId) {
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:black;color:white;display:flex;justify-content:center;align-items:center;font-size:24px;z-index:200;';
-            overlay.textContent = 'Bajando las escaleras...';
-            document.body.appendChild(overlay);
-            setTimeout(() => {
-                overlay.remove();
-                gameState.currentMap = mapId;
-                gameState.javi.col = 2;
-                gameState.javi.row = 12;
-                gameState.camera.x = 0;
-                gameState.camera.y = 0;
-                gameState.flags.setupGamer = false;
-                updateCamera();
-                saveGame();
-                backBtn.style.display = 'block';
-            }, 2000);
-        }
-
         // ==================== DIBUJO ====================
         function drawScene() {
             ctx.clearRect(0, 0, gameState.viewWidth, gameState.viewHeight);
@@ -477,27 +479,17 @@
             ctx.save();
             ctx.translate(-camera.x, -camera.y);
 
-            if (gameState.currentMap === 'dormitorio') {
-                if (fondoHabitacion.complete) {
-                    ctx.drawImage(fondoHabitacion, 0, 0, MAP_WIDTH, MAP_HEIGHT);
-                } else {
-                    ctx.fillStyle = '#2d6a4f';
-                    ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-                }
-            } else if (gameState.currentMap === 'plantaBaja') {
-                const grad = ctx.createLinearGradient(0, 0, 0, MAP_HEIGHT);
-                grad.addColorStop(0, '#d4a373');
-                grad.addColorStop(1, '#8b5a2b');
-                ctx.fillStyle = grad;
+            if (fondo.complete && fondo.naturalWidth > 0) {
+                ctx.drawImage(fondo, 0, 0, MAP_WIDTH, MAP_HEIGHT);
+            } else {
+                ctx.fillStyle = '#2d6a4f';
                 ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-                ctx.fillStyle = '#6b4f3c';
-                ctx.fillRect(0, MAP_HEIGHT-40, MAP_WIDTH, 40);
             }
 
             drawCharacter(gameState.javi, false);
             ctx.restore();
 
-            // Brillo del botón A
+            // Brillo del botón A si hay objeto cercano
             if (getNearbyInteractive()) {
                 btnA.classList.add('glow');
             } else {
@@ -564,64 +556,59 @@
             requestAnimationFrame(loop);
         }
 
-        // ==================== AJUSTE DE VENTANA ====================
-        function resizeCanvas() {
-            // El canvas se ajusta automáticamente via CSS object-fit: contain.
-            // Solo actualizamos el tamaño lógico para que coincida con el tamaño real del canvas.
+        // ==================== AJUSTE DE VENTANA (mantenemos el tamaño natural de la imagen) ====================
+        fondo.onload = () => {
+            canvas.width = fondo.naturalWidth;   // 550
+            canvas.height = fondo.naturalHeight; // 252
             gameState.viewWidth = canvas.width;
             gameState.viewHeight = canvas.height;
+            gameState.javi.col = Math.floor(COLS / 2);
+            gameState.javi.row = Math.floor(ROWS / 2) + 1;
             updateCamera();
-        }
-        window.addEventListener('resize', resizeCanvas);
-        // Forzar actualización cuando el canvas cambie de tamaño (por carga de imagen o fullscreen)
-        new ResizeObserver(() => resizeCanvas()).observe(canvas);
+            gameState.gameReady = true;
+        };
 
-        // ==================== CONTROLES ====================
-        function setupControls() {
+        // ==================== CONTROLES TÁCTILES ====================
+        function setupTouchControls() {
             const btnUp = document.getElementById('btnUp');
             const btnDown = document.getElementById('btnDown');
             const btnLeft = document.getElementById('btnLeft');
             const btnRight = document.getElementById('btnRight');
+            const btnB = document.getElementById('btnB');
 
-            function addDir(btn, dx, dy) {
+            function addDirBtn(btn, dx, dy) {
                 btn.addEventListener('pointerdown', (e) => {
                     e.preventDefault();
-                    gameState.activeDir.dx = dx; gameState.activeDir.dy = dy;
+                    gameState.activeDir.dx = dx;
+                    gameState.activeDir.dy = dy;
                 });
                 btn.addEventListener('pointerup', (e) => {
                     e.preventDefault();
-                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy)
-                        gameState.activeDir.dx = gameState.activeDir.dy = 0;
+                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy) {
+                        gameState.activeDir.dx = 0;
+                        gameState.activeDir.dy = 0;
+                    }
                 });
                 btn.addEventListener('pointerleave', (e) => {
-                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy)
-                        gameState.activeDir.dx = gameState.activeDir.dy = 0;
+                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy) {
+                        gameState.activeDir.dx = 0;
+                        gameState.activeDir.dy = 0;
+                    }
                 });
             }
-            addDir(btnUp, 0, -1);
-            addDir(btnDown, 0, 1);
-            addDir(btnLeft, -1, 0);
-            addDir(btnRight, 1, 0);
+            addDirBtn(btnUp, 0, -1);
+            addDirBtn(btnDown, 0, 1);
+            addDirBtn(btnLeft, -1, 0);
+            addDirBtn(btnRight, 1, 0);
 
             btnA.addEventListener('click', () => {
                 const obj = getNearbyInteractive();
                 if (obj) interactWithObject(obj);
             });
-            document.getElementById('btnB').addEventListener('click', () => {
+
+            btnB.addEventListener('click', () => {
                 const modals = document.querySelectorAll('.modal');
                 if (modals.length) modals[modals.length-1].remove();
-            });
-
-            backBtn.addEventListener('click', () => {
-                gameState.currentMap = 'dormitorio';
-                gameState.javi.col = 33;
-                gameState.javi.row = 14;
-                gameState.flags.setupGamer = false;
-                gameState.camera.x = 0;
-                gameState.camera.y = 0;
-                backBtn.style.display = 'none';
-                updateCamera();
-                saveGame();
             });
         }
 
@@ -634,27 +621,34 @@
             }
         });
 
-        // ==================== TECLADO ====================
+        // ==================== TECLADO (para desarrollo) ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                const dir = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] }[e.key];
-                gameState.activeDir.dx = dir[0]; gameState.activeDir.dy = dir[1];
+                switch (e.key) {
+                    case 'ArrowLeft': gameState.activeDir.dx = -1; gameState.activeDir.dy = 0; break;
+                    case 'ArrowRight': gameState.activeDir.dx = 1; gameState.activeDir.dy = 0; break;
+                    case 'ArrowUp': gameState.activeDir.dx = 0; gameState.activeDir.dy = -1; break;
+                    case 'ArrowDown': gameState.activeDir.dx = 0; gameState.activeDir.dy = 1; break;
+                }
             }
         });
         window.addEventListener('keyup', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                const dir = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] }[e.key];
-                if (gameState.activeDir.dx === dir[0] && gameState.activeDir.dy === dir[1])
-                    gameState.activeDir.dx = gameState.activeDir.dy = 0;
+                if ((e.key === 'ArrowLeft' && gameState.activeDir.dx === -1) ||
+                    (e.key === 'ArrowRight' && gameState.activeDir.dx === 1) ||
+                    (e.key === 'ArrowUp' && gameState.activeDir.dy === -1) ||
+                    (e.key === 'ArrowDown' && gameState.activeDir.dy === 1)) {
+                    gameState.activeDir.dx = 0;
+                    gameState.activeDir.dy = 0;
+                }
             }
         });
 
-        // ==================== GUARDADO ====================
+        // ==================== GUARDADO (localStorage) ====================
         function saveGame() {
             localStorage.setItem('pokeAmorSave', JSON.stringify({
-                currentMap: gameState.currentMap,
                 javi: { col: gameState.javi.col, row: gameState.javi.row, faceDir: gameState.javi.faceDir },
                 flags: gameState.flags
             }));
@@ -663,30 +657,28 @@
             const raw = localStorage.getItem('pokeAmorSave');
             if (raw) {
                 const data = JSON.parse(raw);
-                gameState.currentMap = data.currentMap || 'dormitorio';
                 gameState.javi.col = data.javi.col;
                 gameState.javi.row = data.javi.row;
                 gameState.javi.faceDir = data.javi.faceDir || 'frente';
                 gameState.flags = data.flags || { setupGamer: false };
-                if (gameState.currentMap !== 'dormitorio') {
-                    backBtn.style.display = 'block';
-                }
-            } else {
-                gameState.javi.col = 33;
-                gameState.javi.row = 14;
             }
         }
 
         // ==================== INICIO ====================
         function init() {
             loadGame();
-            setupControls();
-            // El canvas se dimensiona solo con CSS; esperamos a que esté listo
-            gameState.gameReady = true;
-            resizeCanvas();
-            updateCamera();
+            setupTouchControls();
+            // El canvas se dimensiona al cargar la imagen; mientras tanto no está listo
+            if (fondo.complete) {
+                canvas.width = fondo.naturalWidth;
+                canvas.height = fondo.naturalHeight;
+                gameState.viewWidth = canvas.width;
+                gameState.viewHeight = canvas.height;
+                gameState.gameReady = true;
+            }
             requestAnimationFrame(loop);
         }
+
         window.addEventListener('load', init);
     })();
 </script>
