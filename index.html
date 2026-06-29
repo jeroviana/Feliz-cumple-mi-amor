@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PokéAventura · Día 1!</title>
+    <title>PokéAventura · Día 1</title>
     <style>
         * {
             margin: 0;
@@ -129,6 +129,15 @@
             background: rgba(255,200,120,0.5);
             transform: scale(0.9);
         }
+        .action-btns button.glow {
+            border-color: #ffb347;
+            box-shadow: 0 0 12px #ffb347;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { box-shadow: 0 0 8px #ffb347; }
+            to { box-shadow: 0 0 16px #ffb347; }
+        }
         /* Modales */
         .modal {
             position: fixed;
@@ -191,12 +200,29 @@
             border-top-color: white;
             border-bottom: 0;
         }
+        /* Botón volver (temporal para pruebas) */
+        #back-btn {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 25;
+            display: none;
+        }
     </style>
 </head>
 <body>
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
+    <button id="back-btn">← Volver a la habitación</button>
     <div class="touch-controls">
         <div class="dpad" id="dpad">
             <button class="empty"></button>
@@ -220,6 +246,8 @@
     (function() {
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const btnA = document.getElementById('btnA');
+        const backBtn = document.getElementById('back-btn');
 
         // ==================== CONFIGURACIÓN ====================
         const CELL_SIZE = 20;
@@ -230,6 +258,7 @@
         const MOVE_DURATION = 200;
         const ANIM_FRAME_DURATION = 120;
         const CAMERA_MARGIN = 4 * CELL_SIZE;
+        const CAMERA_SMOOTH = 0.15; // suavizado de cámara
 
         const JAVI_DRAW_WIDTH = 88;
         const JAVI_DRAW_HEIGHT = 140;
@@ -255,15 +284,12 @@
             loadedImages[key] = img;
         });
 
-        // ==================== POLÍGONO DEL PISO (corregido) ====================
+        // ==================== POLÍGONO DEL PISO ====================
         const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
-        const floorPolygon = [];
-        for (let i = 0; i < floorRaw.length; i += 2) {
-            floorPolygon.push({
-                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
-                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
-            });
-        }
+        const floorPolygon = floorRaw.reduce((acc, val, idx) => {
+            if (idx % 2 === 0) acc.push({ x: val * CELL_SIZE + CELL_SIZE/2, y: floorRaw[idx+1] * CELL_SIZE + CELL_SIZE/2 });
+            return acc;
+        }, []).filter((_, i) => i < floorRaw.length/2);
 
         // Objetos interactivos
         const interactiveObjects = [
@@ -364,7 +390,6 @@
             else if (dy < 0) j.faceDir = 'atras';
 
             startMove(j, nc, nr);
-            updateCamera();
             checkExitZones();
         }
 
@@ -372,7 +397,6 @@
             const j = gameState.javi;
             const jx = j.col * CELL_SIZE + CELL_SIZE/2;
             const jy = j.row * CELL_SIZE + CELL_SIZE/2;
-            let cam = gameState.camera;
             const viewW = gameState.viewWidth;
             const viewH = gameState.viewHeight;
 
@@ -380,13 +404,17 @@
             let targetY = jy - viewH/2;
 
             const margin = CAMERA_MARGIN;
-            if (jx - cam.x < margin) targetX = jx - margin;
-            else if (jx - cam.x > viewW - margin) targetX = jx - (viewW - margin);
-            if (jy - cam.y < margin) targetY = jy - margin;
-            else if (jy - cam.y > viewH - margin) targetY = jy - (viewH - margin);
+            if (jx - gameState.camera.x < margin) targetX = jx - margin;
+            else if (jx - gameState.camera.x > viewW - margin) targetX = jx - (viewW - margin);
+            if (jy - gameState.camera.y < margin) targetY = jy - margin;
+            else if (jy - gameState.camera.y > viewH - margin) targetY = jy - (viewH - margin);
 
-            cam.x = Math.max(0, Math.min(targetX, MAP_WIDTH - viewW));
-            cam.y = Math.max(0, Math.min(targetY, MAP_HEIGHT - viewH));
+            targetX = Math.max(0, Math.min(targetX, MAP_WIDTH - viewW));
+            targetY = Math.max(0, Math.min(targetY, MAP_HEIGHT - viewH));
+
+            // Interpolación suave
+            gameState.camera.x += (targetX - gameState.camera.x) * CAMERA_SMOOTH;
+            gameState.camera.y += (targetY - gameState.camera.y) * CAMERA_SMOOTH;
         }
 
         // ==================== INTERACCIONES ====================
@@ -418,7 +446,6 @@
             } else if (inter.type === 'thought') {
                 showThoughtCloud(inter.text);
             } else if (inter.type === 'exit') {
-                const alfombra = obj;
                 if (!gameState.flags.setupGamer) {
                     showModal('Todavía hay que explorar este espacio un poco más');
                 } else {
@@ -430,7 +457,7 @@
         }
 
         function checkExitZones() {
-            // La interacción con la alfombra se maneja con A, no automáticamente.
+            // No automático; se usa interactuar con A
         }
 
         function showModal(text, onAccept, withOptions = false) {
@@ -460,22 +487,22 @@
         }
 
         function transitionToMap(mapId) {
-            // Pantalla negra de transición
             const overlay = document.createElement('div');
             overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:black;color:white;display:flex;justify-content:center;align-items:center;font-size:24px;z-index:200;';
             overlay.textContent = 'Bajando las escaleras...';
             document.body.appendChild(overlay);
             setTimeout(() => {
                 overlay.remove();
-                // Cambiamos al mapa plantaBaja (fondo genérico)
                 gameState.currentMap = mapId;
-                gameState.javi.col = 2;   // entrada izquierda
+                gameState.javi.col = 2;
                 gameState.javi.row = 12;
                 gameState.camera.x = 0;
                 gameState.camera.y = 0;
-                gameState.flags.setupGamer = false; // reset para pruebas (luego lo manejaremos con días)
+                gameState.flags.setupGamer = false;
                 updateCamera();
                 saveGame();
+                // Mostrar botón para volver (solo pruebas)
+                backBtn.style.display = 'block';
             }, 2000);
         }
 
@@ -486,7 +513,6 @@
             ctx.save();
             ctx.translate(-camera.x, -camera.y);
 
-            // Fondo según mapa actual
             if (gameState.currentMap === 'dormitorio') {
                 if (fondoHabitacion.complete) {
                     ctx.drawImage(fondoHabitacion, 0, 0, MAP_WIDTH, MAP_HEIGHT);
@@ -495,37 +521,24 @@
                     ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
                 }
             } else if (gameState.currentMap === 'plantaBaja') {
-                // Fondo genérico de sala (gradiente)
                 const grad = ctx.createLinearGradient(0, 0, 0, MAP_HEIGHT);
                 grad.addColorStop(0, '#d4a373');
                 grad.addColorStop(1, '#8b5a2b');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
                 ctx.fillStyle = '#6b4f3c';
-                ctx.fillRect(0, MAP_HEIGHT-40, MAP_WIDTH, 40); // piso
+                ctx.fillRect(0, MAP_HEIGHT-40, MAP_WIDTH, 40);
             }
 
-            // Resplandor de objetos interactivos cercanos
-            const nearObj = getNearbyInteractive();
-            if (nearObj && nearObj.type === 'rect') {
-                const {col1, row1, col2, row2} = nearObj;
-                const x = col1 * CELL_SIZE;
-                const y = row1 * CELL_SIZE;
-                const w = (col2 - col1 + 1) * CELL_SIZE;
-                const h = (row2 - row1 + 1) * CELL_SIZE;
-                ctx.save();
-                ctx.shadowColor = 'rgba(255, 200, 100, 0.8)';
-                ctx.shadowBlur = 15;
-                ctx.strokeStyle = 'rgba(255, 200, 100, 0.9)';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(x, y, w, h);
-                ctx.restore();
-            }
-
-            // Personaje
             drawCharacter(gameState.javi, false);
-
             ctx.restore();
+
+            // Actualizar brillo del botón A
+            if (isNearInteractive()) {
+                btnA.classList.add('glow');
+            } else {
+                btnA.classList.remove('glow');
+            }
         }
 
         function drawCharacter(ch, isSol = false) {
@@ -582,6 +595,7 @@
                 tryMoveJavi();
             }
 
+            updateCamera();
             drawScene();
             requestAnimationFrame(loop);
         }
@@ -611,8 +625,6 @@
             const btnDown = document.getElementById('btnDown');
             const btnLeft = document.getElementById('btnLeft');
             const btnRight = document.getElementById('btnRight');
-            const btnA = document.getElementById('btnA');
-            const btnB = document.getElementById('btnB');
 
             function addDir(btn, dx, dy) {
                 btn.addEventListener('pointerdown', (e) => {
@@ -638,9 +650,22 @@
                 const obj = getNearbyInteractive();
                 if (obj) interactWithObject(obj);
             });
-            btnB.addEventListener('click', () => {
+            document.getElementById('btnB').addEventListener('click', () => {
                 const modals = document.querySelectorAll('.modal');
                 if (modals.length) modals[modals.length-1].remove();
+            });
+
+            // Botón volver (pruebas)
+            backBtn.addEventListener('click', () => {
+                gameState.currentMap = 'dormitorio';
+                gameState.javi.col = 33;
+                gameState.javi.row = 14;
+                gameState.flags.setupGamer = false;
+                gameState.camera.x = 0;
+                gameState.camera.y = 0;
+                backBtn.style.display = 'none';
+                updateCamera();
+                saveGame();
             });
         }
 
@@ -650,7 +675,7 @@
             else document.documentElement.requestFullscreen();
         });
 
-        // ==================== TECLADO (desarrollo) ====================
+        // ==================== TECLADO ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
@@ -688,6 +713,9 @@
                     const nearest = findNearestWalkable(gameState.javi.col, gameState.javi.row);
                     gameState.javi.col = nearest.col;
                     gameState.javi.row = nearest.row;
+                }
+                if (gameState.currentMap !== 'dormitorio') {
+                    backBtn.style.display = 'block';
                 }
             } else {
                 const start = findNearestWalkable(33, 14);
