@@ -3,25 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PokéAventura · Habitación</title>
+    <title>PokéAventura · Día 1</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             user-select: none;
-            -webkit-user-select: none;
-            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
         }
         body {
-            background: #0a1f1a;
+            background: #0a0a0a;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100dvh;
             overflow: hidden;
             font-family: 'Courier New', monospace;
-            touch-action: manipulation;
+            touch-action: none;
         }
         #game-container {
             position: relative;
@@ -30,37 +29,45 @@
             align-items: center;
             width: 100%;
             height: 100%;
+            background: #1a1a1a;
+            border: 12px solid #111;
+            border-radius: 24px;
+            box-shadow: inset 0 0 0 2px #333;
         }
         canvas {
             display: block;
-            border: 2px solid #ffb347;
-            border-radius: 12px;
-            image-rendering: crisp-edges;
-            /* El tamaño se ajusta por JS; no usar object-fit */
             background: black;
+            image-rendering: pixelated;
+            border-radius: 4px;
+            flex-shrink: 0;
         }
-        /* Botón pantalla completa */
-        #fullscreen-btn {
-            position: absolute;
-            bottom: 15px;
-            right: 15px;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            background: rgba(0,0,0,0.6);
-            backdrop-filter: blur(4px);
-            border: 2px solid rgba(255,255,255,0.4);
-            color: white;
-            font-size: 22px;
+        /* Transición a negro (escaleras) */
+        #transition-overlay {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            z-index: 999;
             display: flex;
-            align-items: center;
             justify-content: center;
-            cursor: pointer;
-            z-index: 20;
-            transition: 0.2s;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
         }
-        #fullscreen-btn:hover {
-            background: rgba(255,255,255,0.3);
+        #transition-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #transition-text {
+            color: #fff;
+            font-size: 28px;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 10px #ffb347;
+            animation: pulseText 1s infinite alternate;
+        }
+        @keyframes pulseText {
+            from { opacity: 0.4; transform: scale(0.98); }
+            to { opacity: 1; transform: scale(1.02); }
         }
         /* Controles táctiles */
         .touch-controls {
@@ -71,93 +78,141 @@
         }
         .dpad {
             position: absolute;
-            bottom: 20px;
-            left: 20px;
+            bottom: 30px;
+            left: 30px;
             display: grid;
-            grid-template-columns: 50px 50px 50px;
-            grid-template-rows: 50px 50px 50px;
-            gap: 4px;
+            grid-template-columns: 56px 56px 56px;
+            grid-template-rows: 56px 56px 56px;
+            gap: 6px;
             pointer-events: auto;
         }
         .dpad button {
-            background: rgba(255,255,255,0.15);
+            background: rgba(80, 80, 80, 0.7);
             backdrop-filter: blur(6px);
-            border: 1px solid rgba(255,255,255,0.3);
-            border-radius: 12px;
-            font-size: 24px;
-            color: rgba(255,255,255,0.9);
-            text-shadow: 0 0 6px black;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 26px;
+            font-weight: bold;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.4);
             transition: 0.05s;
             touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
         }
         .dpad button:active {
-            background: rgba(255,255,255,0.4);
-            transform: scale(0.9);
+            transform: translateY(4px);
+            box-shadow: 0 0 0 rgba(0,0,0,0.4);
         }
         .dpad .empty {
             background: transparent;
             border: none;
+            box-shadow: none;
             pointer-events: none;
         }
         .action-btns {
             position: absolute;
-            bottom: 30px;
+            bottom: 40px;
             right: 30px;
             display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 12px;
+            gap: 20px;
             pointer-events: auto;
         }
         .action-btns button {
-            width: 60px;
-            height: 60px;
+            width: 70px;
+            height: 70px;
             border-radius: 50%;
-            background: rgba(255, 200, 120, 0.2);
-            backdrop-filter: blur(6px);
-            border: 2px solid rgba(255,255,255,0.4);
-            font-size: 24px;
+            border: 3px solid rgba(255,255,255,0.3);
+            font-size: 28px;
             font-weight: bold;
             color: white;
             text-shadow: 0 0 6px black;
             cursor: pointer;
+            box-shadow: 0 6px 0 rgba(0,0,0,0.5);
             transition: 0.05s;
             touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
+        }
+        #btnA {
+            background: linear-gradient(135deg, #ff8c00, #e67e22); /* Naranja favorito */
+            border-color: #ffb347;
+        }
+        #btnB {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            border-color: #5aa0ff;
         }
         .action-btns button:active {
-            background: rgba(255,200,120,0.5);
-            transform: scale(0.9);
+            transform: translateY(6px);
+            box-shadow: 0 0 0 rgba(0,0,0,0.5);
         }
-        .action-btns button.glow {
-            border-color: #ffb347;
-            box-shadow: 0 0 12px #ffb347;
-            animation: pulse 0.5s infinite alternate;
+        #btnA.glow {
+            animation: glowPulse 1s infinite alternate;
         }
-        @keyframes pulse {
-            from { box-shadow: 0 0 8px #ffb347; }
-            to { box-shadow: 0 0 16px #ffb347; }
+        @keyframes glowPulse {
+            from { box-shadow: 0 0 8px #ffb347, 0 6px 0 rgba(0,0,0,0.5); }
+            to { box-shadow: 0 0 25px #ffb347, 0 6px 0 rgba(0,0,0,0.5); }
         }
-        /* Nube de pensamiento (cómic) */
+        /* Modal y Burbuja */
+        .modal {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        .modal-content {
+            background: #fff3cf;
+            max-width: 85%;
+            padding: 25px 30px;
+            border-radius: 24px;
+            border: 4px solid #ffcd7e;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c2b1f;
+            white-space: pre-line;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal-content p { margin-bottom: 15px; }
+        .modal-content button {
+            margin: 0 8px;
+            padding: 10px 25px;
+            border-radius: 30px;
+            border: none;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            background: #ffb347;
+            color: #111;
+            box-shadow: 0 4px 0 #cc8a2e;
+            transition: 0.1s;
+        }
+        .modal-content button:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #cc8a2e;
+        }
+        .modal-content button.no {
+            background: #aaa;
+            box-shadow: 0 4px 0 #777;
+        }
         .thought-cloud {
             position: absolute;
             background: white;
-            border: 2px solid #333;
-            border-radius: 50%;
-            padding: 12px 20px;
-            font-family: 'Comic Sans MS', 'Segoe UI', cursive;
-            font-size: 14px;
+            border: 3px solid #333;
+            border-radius: 30px;
+            padding: 15px 25px;
+            font-family: 'Comic Sans MS', cursive;
+            font-size: 16px;
             color: #222;
             text-align: center;
-            white-space: pre-line;
             z-index: 50;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            max-width: 70%;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+            max-width: 80%;
             left: 50%;
             top: 15%;
             transform: translateX(-50%);
@@ -165,52 +220,24 @@
         .thought-cloud::after {
             content: '';
             position: absolute;
-            bottom: -20px;
+            bottom: -18px;
             left: 50%;
             transform: translateX(-50%);
-            width: 0;
-            height: 0;
             border: 10px solid transparent;
             border-top-color: white;
-            border-bottom: 0;
         }
-        /* Modales */
-        .modal {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-        .modal-content {
-            background: #fff3cf;
-            max-width: 80%;
-            padding: 20px;
-            border-radius: 24px;
-            border: 4px solid #ffcd7e;
-            text-align: center;
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c2b1f;
-            white-space: pre-line;
-        }
-        .modal-content button {
-            margin: 10px 5px;
-            padding: 8px 20px;
-            border-radius: 20px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
+        /* Responsive */
+        @media (max-width: 600px) {
+            .dpad button { width: 48px; height: 48px; font-size: 20px; }
+            .action-btns button { width: 60px; height: 60px; font-size: 24px; }
+            .dpad { gap: 4px; bottom: 20px; left: 15px; grid-template-columns: 48px 48px 48px; grid-template-rows: 48px 48px 48px; }
         }
     </style>
 </head>
 <body>
+
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
-    <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
     <div class="touch-controls">
         <div class="dpad" id="dpad">
             <button class="empty"></button>
@@ -230,27 +257,36 @@
     </div>
 </div>
 
+<!-- Overlay para bajada de escaleras -->
+<div id="transition-overlay">
+    <div id="transition-text">Bajando las escaleras...</div>
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal">
+    <div class="modal-content">
+        <p id="modal-text"></p>
+        <div id="modal-buttons"></div>
+    </div>
+</div>
+
 <script>
     (function() {
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const btnA = document.getElementById('btnA');
-
         // ==================== CONFIGURACIÓN ====================
         const CELL_SIZE = 20;
         const MAP_WIDTH = 1100;
-        const MAP_HEIGHT = 504;   // alto total del paisaje
+        const MAP_HEIGHT = 504;
         const COLS = MAP_WIDTH / CELL_SIZE;
         const ROWS = MAP_HEIGHT / CELL_SIZE;
-        const MOVE_DURATION = 200;
-        const ANIM_FRAME_DURATION = 120;
-        const CAMERA_MARGIN = 4 * CELL_SIZE;
-        const CAMERA_SMOOTH = 0.25;
+        const MOVE_DURATION = 180;
+        const ANIM_FRAME_DURATION = 90;
+        const CAMERA_MARGIN = 3 * CELL_SIZE;
+        const CAMERA_SMOOTH = 0.2;
 
         const JAVI_DRAW_WIDTH = 88;
         const JAVI_DRAW_HEIGHT = 140;
 
-        // ==================== IMÁGENES ====================
+        // ==================== IMÁGENES (Tus URLs) ====================
         const fondo = new Image();
         fondo.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
 
@@ -272,22 +308,23 @@
         });
 
         // ==================== POLÍGONO DEL PISO ====================
-        const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
+        const floorString = "11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6";
+        const nums = floorString.split(',').map(Number);
         const floorPolygon = [];
-        for (let i = 0; i < floorRaw.length; i += 2) {
+        for (let i = 0; i < nums.length; i += 2) {
             floorPolygon.push({
-                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
-                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
+                x: nums[i] * CELL_SIZE + CELL_SIZE/2,
+                y: nums[i+1] * CELL_SIZE + CELL_SIZE/2
             });
         }
 
-        // Rectángulos bloqueantes (objetos sólidos)
+        // ==================== OBJETOS SÓLIDOS ====================
         const blockedRects = [
             { col1: 38, row1: 5, col2: 49, row2: 9 },   // escritorio
             { col1: 0, row1: 1, col2: 9, row2: 24 }     // placard
         ];
 
-        // Objetos interactivos
+        // ==================== OBJETOS INTERACTIVOS ====================
         const interactiveObjects = [
             {
                 id: 'escritorio',
@@ -301,16 +338,16 @@
                 interaction: { type: 'thought', text: '¿Dónde estarán todos mis hoodies...?' }
             },
             {
-                id: 'alfombra',
+                id: 'puerta',
                 rect: { col1: 10, row1: 22, col2: 15, row2: 24 },
-                interaction: { type: 'exit', text: '¿Deseas salir de la habitación?' }
+                interaction: { type: 'exit' }
             }
         ];
 
-        // ==================== ESTADO ====================
+        // ==================== ESTADO DEL JUEGO ====================
         let gameState = {
             javi: {
-                col: 33, row: 14,
+                col: 30, row: 11, // Al lado de la cama
                 faceDir: 'frente',
                 moving: false,
                 stepFrame: 0,
@@ -352,7 +389,7 @@
 
         function findNearestWalkable(col, row) {
             if (isWalkable(col, row)) return {col, row};
-            for (let radius = 1; radius < 10; radius++) {
+            for (let radius = 1; radius < 15; radius++) {
                 for (let dc = -radius; dc <= radius; dc++) {
                     for (let dr = -radius; dr <= radius; dr++) {
                         if (Math.abs(dc) + Math.abs(dr) === radius) {
@@ -366,7 +403,7 @@
         }
 
         function getCellCenter(col, row) {
-            return { x: col * CELL_SIZE + CELL_SIZE/2, y: row * CELL_SIZE + CELL_SIZE };
+            return { x: col * CELL_SIZE + CELL_SIZE/2, y: row * CELL_SIZE + CELL_SIZE/2 };
         }
 
         // ==================== MOVIMIENTO ====================
@@ -421,23 +458,73 @@
             gameState.camera.y += (targetY - gameState.camera.y) * CAMERA_SMOOTH;
         }
 
-        // ==================== INTERACCIONES ====================
+        // ==================== INTERACCIONES Y MODALES ====================
         function getNearbyInteractive() {
             const j = gameState.javi;
             for (let obj of interactiveObjects) {
-                const {col1, row1, col2, row2} = obj.rect;
-                if (j.col >= col1 - 1 && j.col <= col2 + 1 && j.row >= row1 - 1 && j.row <= row2 + 1) {
-                    return obj;
-                }
+                const midCol = (obj.rect.col1 + obj.rect.col2) / 2;
+                const midRow = (obj.rect.row1 + obj.rect.row2) / 2;
+                const dist = Math.abs(j.col - midCol) + Math.abs(j.row - midRow);
+                if (dist <= 3) return obj;
             }
             return null;
+        }
+
+        function showModal(text, options, onYes, onNo) {
+            const modal = document.getElementById('modal');
+            const textP = document.getElementById('modal-text');
+            const btnsDiv = document.getElementById('modal-buttons');
+
+            textP.textContent = text;
+            btnsDiv.innerHTML = '';
+
+            if (options && options.length > 0) {
+                options.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.textContent = opt;
+                    if (opt === 'No') btn.className = 'no';
+                    btn.onclick = () => {
+                        modal.style.display = 'none';
+                        if (opt === 'Sí' && onYes) onYes();
+                        if (opt === 'No' && onNo) onNo();
+                    };
+                    btnsDiv.appendChild(btn);
+                });
+            } else {
+                const btn = document.createElement('button');
+                btn.textContent = 'Cerrar';
+                btn.onclick = () => { modal.style.display = 'none'; if (onYes) onYes(); };
+                btnsDiv.appendChild(btn);
+            }
+            modal.style.display = 'flex';
+        }
+
+        function showThoughtCloud(text) {
+            const container = document.getElementById('game-container');
+            const cloud = document.createElement('div');
+            cloud.className = 'thought-cloud';
+            cloud.textContent = text;
+            container.appendChild(cloud);
+            setTimeout(() => cloud.remove(), 3000);
+        }
+
+        function showTransition(text, duration, callback) {
+            const overlay = document.getElementById('transition-overlay');
+            const textEl = document.getElementById('transition-text');
+            textEl.textContent = text;
+            overlay.classList.add('active');
+            setTimeout(() => {
+                overlay.classList.remove('active');
+                if (callback) callback();
+            }, duration);
         }
 
         function interactWithObject(obj) {
             if (!obj) return;
             const inter = obj.interaction;
+
             if (inter.type === 'modal') {
-                showModal(inter.text, () => {
+                showModal(inter.text, null, () => {
                     if (obj.id === 'escritorio' && !gameState.flags.setupGamer) {
                         gameState.flags.setupGamer = true;
                         saveGame();
@@ -446,41 +533,28 @@
             } else if (inter.type === 'thought') {
                 showThoughtCloud(inter.text);
             } else if (inter.type === 'exit') {
-                if (!gameState.flags.setupGamer) {
-                    showModal('Todavía hay que explorar este espacio un poco más');
-                } else {
-                    showModal(inter.text, () => {
-                        // Transición a planta baja (placeholder)
-                        alert('Próximamente: Planta baja');
-                    }, true);
-                }
+                showModal('¿Deseas salir de la habitación?', ['Sí', 'No'],
+                    () => { // Sí
+                        if (!gameState.flags.setupGamer) {
+                            showModal('Todavía hay que explorar este espacio un poco más');
+                        } else {
+                            showTransition('Bajando las escaleras...', 2500, () => {
+                                // Día 2: Planta baja (placeholder)
+                                showModal('Has llegado a la planta baja. ¡Continúa mañana!');
+                                // Reubicamos al personaje en el spawn de la habitación por ahora
+                                const startPos = findNearestWalkable(30, 11);
+                                gameState.javi.col = startPos.col;
+                                gameState.javi.row = startPos.row;
+                                gameState.javi.faceDir = 'frente';
+                                saveGame();
+                            });
+                        }
+                    },
+                    () => { // No
+                        // Solo se cierra
+                    }
+                );
             }
-        }
-
-        function showModal(text, onAccept, withOptions = false) {
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            let btns = withOptions
-                ? '<button id="modalYes">Sí</button><button id="modalNo">No</button>'
-                : '<button id="modalClose">Cerrar</button>';
-            modal.innerHTML = `<div class="modal-content"><p>${text.replace(/\n/g,'<br>')}</p>${btns}</div>`;
-            document.body.appendChild(modal);
-
-            const close = () => { modal.remove(); if (onAccept) onAccept(); };
-            if (withOptions) {
-                document.getElementById('modalYes').onclick = () => close();
-                document.getElementById('modalNo').onclick = () => modal.remove();
-            } else {
-                document.getElementById('modalClose').onclick = close;
-            }
-        }
-
-        function showThoughtCloud(text) {
-            const cloud = document.createElement('div');
-            cloud.className = 'thought-cloud';
-            cloud.textContent = text;
-            document.getElementById('game-container').appendChild(cloud);
-            setTimeout(() => cloud.remove(), 3000);
         }
 
         // ==================== DIBUJO ====================
@@ -490,7 +564,6 @@
             ctx.save();
             ctx.translate(-camera.x, -camera.y);
 
-            // Fondo (escalado a MAP_WIDTH x MAP_HEIGHT)
             if (fondo.complete && fondo.naturalWidth > 0) {
                 ctx.drawImage(fondo, 0, 0, MAP_WIDTH, MAP_HEIGHT);
             } else {
@@ -502,7 +575,8 @@
             ctx.restore();
 
             // Brillo del botón A
-            if (getNearbyInteractive()) {
+            const btnA = document.getElementById('btnA');
+            if (getNearbyInteractive() && !gameState.javi.moving) {
                 btnA.classList.add('glow');
             } else {
                 btnA.classList.remove('glow');
@@ -529,7 +603,6 @@
 
             const boxW = JAVI_DRAW_WIDTH;
             const boxH = JAVI_DRAW_HEIGHT;
-
             if (img && img.complete && img.naturalWidth > 0) {
                 const s = Math.min(boxW / img.naturalWidth, boxH / img.naturalHeight);
                 const dw = img.naturalWidth * s, dh = img.naturalHeight * s;
@@ -541,7 +614,7 @@
             }
         }
 
-        // ==================== BUCLE ====================
+        // ==================== BUCLE PRINCIPAL ====================
         let lastAnimFrame = 0;
         function loop(now) {
             if (!gameState.gameReady) {
@@ -568,50 +641,37 @@
             requestAnimationFrame(loop);
         }
 
-        // ==================== AJUSTE DE VENTANA (ALTO COMPLETO) ====================
+        // ==================== RESIZE (MARCO DE EMULADOR) ====================
         function resizeCanvas() {
             const container = document.getElementById('game-container');
             const containerWidth = container.clientWidth;
             const containerHeight = container.clientHeight;
 
-            // El canvas debe ocupar toda la altura del contenedor
-            canvas.height = containerHeight;
-            // Ancho proporcional al mapa (MAP_WIDTH / MAP_HEIGHT)
             const mapRatio = MAP_WIDTH / MAP_HEIGHT;
-            canvas.width = containerHeight * mapRatio;
+            let canvasWidth = containerHeight * mapRatio;
+            let canvasHeight = containerHeight;
 
-            // Si el canvas es más ancho que el contenedor, se permite scroll horizontal (la cámara lo maneja)
-            // Si es más angosto, se centra con margen automático
-            if (canvas.width <= containerWidth) {
-                canvas.style.margin = '0 auto';
-            } else {
-                canvas.style.margin = '0';
+            if (canvasWidth > containerWidth) {
+                canvasWidth = containerWidth;
+                canvasHeight = canvasWidth / mapRatio;
             }
 
-            gameState.viewWidth = canvas.width;
-            gameState.viewHeight = canvas.height;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            gameState.viewWidth = canvasWidth;
+            gameState.viewHeight = canvasHeight;
             updateCamera();
         }
 
         window.addEventListener('resize', resizeCanvas);
-        // También al cambiar a pantalla completa
-        document.addEventListener('fullscreenchange', resizeCanvas);
 
-        // ==================== INICIALIZACIÓN (SPAWN EN 33,14) ====================
-        fondo.onload = () => {
-            const startPos = findNearestWalkable(33, 14);
-            gameState.javi.col = startPos.col;
-            gameState.javi.row = startPos.row;
-            resizeCanvas();
-            gameState.gameReady = true;
-        };
-
-        // ==================== CONTROLES TÁCTILES ====================
-        function setupTouchControls() {
+        // ==================== CONTROLES ====================
+        function setupControls() {
             const btnUp = document.getElementById('btnUp');
             const btnDown = document.getElementById('btnDown');
             const btnLeft = document.getElementById('btnLeft');
             const btnRight = document.getElementById('btnRight');
+            const btnA = document.getElementById('btnA');
             const btnB = document.getElementById('btnB');
 
             function addDirBtn(btn, dx, dy) {
@@ -645,21 +705,11 @@
             });
 
             btnB.addEventListener('click', () => {
-                const modals = document.querySelectorAll('.modal');
-                if (modals.length) modals[modals.length-1].remove();
+                document.getElementById('modal').style.display = 'none';
             });
         }
 
-        // ==================== PANTALLA COMPLETA ====================
-        document.getElementById('fullscreen-btn').addEventListener('click', () => {
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            } else {
-                document.documentElement.requestFullscreen();
-            }
-        });
-
-        // ==================== TECLADO ====================
+        // ==================== TECLADO (PC) ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
@@ -669,6 +719,13 @@
                     case 'ArrowUp': gameState.activeDir.dx = 0; gameState.activeDir.dy = -1; break;
                     case 'ArrowDown': gameState.activeDir.dx = 0; gameState.activeDir.dy = 1; break;
                 }
+            }
+            if (e.key === 'a' || e.key === 'A') {
+                const obj = getNearbyInteractive();
+                if (obj) interactWithObject(obj);
+            }
+            if (e.key === 'b' || e.key === 'B') {
+                document.getElementById('modal').style.display = 'none';
             }
         });
         window.addEventListener('keyup', e => {
@@ -699,7 +756,6 @@
                 gameState.javi.row = data.javi.row;
                 gameState.javi.faceDir = data.javi.faceDir || 'frente';
                 gameState.flags = data.flags || { setupGamer: false };
-                // Verificar caminabilidad
                 if (!isWalkable(gameState.javi.col, gameState.javi.row)) {
                     const nearest = findNearestWalkable(gameState.javi.col, gameState.javi.row);
                     gameState.javi.col = nearest.col;
@@ -711,18 +767,22 @@
         // ==================== INICIO ====================
         function init() {
             loadGame();
-            setupTouchControls();
-            if (fondo.complete) {
-                const startPos = findNearestWalkable(gameState.javi.col, gameState.javi.row);
-                gameState.javi.col = startPos.col;
-                gameState.javi.row = startPos.row;
-                resizeCanvas();
-                gameState.gameReady = true;
-            }
+            setupControls();
+            const startPos = findNearestWalkable(gameState.javi.col, gameState.javi.row);
+            gameState.javi.col = startPos.col;
+            gameState.javi.row = startPos.row;
+            resizeCanvas();
+            gameState.gameReady = true;
             requestAnimationFrame(loop);
         }
 
-        window.addEventListener('load', init);
+        // Cargar fondo y luego iniciar
+        fondo.onload = init;
+        // Si la imagen ya está en caché, igual se ejecuta init
+        if (fondo.complete && fondo.naturalWidth > 0) init();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
     })();
 </script>
 </body>
