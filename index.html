@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PokéAventura · Día 1</title>
+    <title>PokéAventura · Habitación</title>
     <style>
         * {
             margin: 0;
@@ -15,6 +15,9 @@
         }
         body {
             background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             height: 100dvh;
             overflow: hidden;
             font-family: 'Courier New', monospace;
@@ -22,15 +25,20 @@
         }
         #game-container {
             position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
             width: 100%;
             height: 100%;
         }
         canvas {
             display: block;
+            border: 2px solid #ffb347;
+            border-radius: 12px;
+            image-rendering: crisp-edges;
             width: 100%;
             height: 100%;
             object-fit: contain;
-            image-rendering: crisp-edges;
             background: black;
         }
         /* Botón pantalla completa */
@@ -51,7 +59,11 @@
             justify-content: center;
             cursor: pointer;
             z-index: 20;
+            transition: 0.2s;
             touch-action: manipulation;
+        }
+        #fullscreen-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
         /* Controles táctiles */
         .touch-controls {
@@ -100,7 +112,7 @@
             bottom: 30px;
             right: 30px;
             display: flex;
-            flex-direction: row;
+            flex-direction: row;   /* ahora horizontal */
             gap: 16px;
             pointer-events: auto;
         }
@@ -124,51 +136,18 @@
             background: rgba(255,200,120,0.5);
             transform: scale(0.9);
         }
-        /* Modales y burbujas */
-        .modal {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-        .modal-content {
-            background: #fff3cf;
-            max-width: 80%;
-            padding: 20px;
-            border-radius: 24px;
-            border: 4px solid #ffcd7e;
-            text-align: center;
-            font-size: 16px;
-            font-weight: bold;
-            color: #2c2b1f;
-            white-space: pre-line;
-        }
-        .modal-content button {
-            margin: 10px 5px;
-            padding: 8px 20px;
-            border-radius: 20px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        .thought-bubble {
+        /* Indicador de celda (debug) */
+        #cell-indicator {
             position: absolute;
-            background: rgba(255,255,240,0.95);
-            border: 2px solid #aaa;
-            border-radius: 16px;
-            padding: 6px 14px;
-            font-family: monospace;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
             font-size: 14px;
-            color: #222;
             pointer-events: none;
-            white-space: pre-line;
-            z-index: 50;
-            transform: translate(-50%, -120%);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            z-index: 30;
+            display: none;
+            transform: translate(-50%, -50%);
         }
     </style>
 </head>
@@ -176,6 +155,7 @@
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
+    <div id="cell-indicator"></div>
     <div class="touch-controls">
         <div class="dpad" id="dpad">
             <button class="empty"></button>
@@ -199,26 +179,32 @@
     (function() {
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const cellIndicator = document.getElementById('cell-indicator');
 
         // ==================== CONFIGURACIÓN ====================
-        const CELL_SIZE = 20;
-        const MAP_WIDTH = 1100;   // mundo lógico (px)
-        const MAP_HEIGHT = 504;
-        const COLS = 55;
-        const ROWS = 25;
+        const DEBUG = true;   // modo debug (para mapear celdas)
 
-        const MOVE_DURATION = 250;
+        // Dimensiones lógicas del canvas (ventana visible)
+        const VIEW_WIDTH = 550;
+        const VIEW_HEIGHT = 252;
+
+        // Dimensiones del mapa (más grande que la vista)
+        const MAP_WIDTH = 1100;   // el doble de ancho
+        const MAP_HEIGHT = 504;   // el doble de alto
+
+        const CELL_SIZE = 20;          // celdas pequeñas
+        const MOVE_DURATION = 250;    // ms por paso
         const ANIM_FRAME_DURATION = 150;
-        const CAMERA_MARGIN = 4 * CELL_SIZE; // 80 px
 
         const JAVI_DRAW_WIDTH = 44;
         const JAVI_DRAW_HEIGHT = 70;
         const SOL_DRAW_WIDTH = 40;
         const SOL_DRAW_HEIGHT = 63;
+        const VERTICAL_OFFSET_SOL = 0;
 
         // ==================== IMÁGENES ====================
-        const fondoHabitacion = new Image();
-        fondoHabitacion.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
+        const fondo = new Image();
+        fondo.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
 
         const SPRITE_URLS = {
             javiFrente: 'https://i.postimg.cc/s2ZVkrzx/JAVIF.png',
@@ -245,120 +231,60 @@
             loadedImages[key] = img;
         });
 
-        // ==================== ZONAS (en coordenadas de celda) ====================
-        // Piso caminable (polígono, pares columna,fila)
-        const floorRaw = [9,7, 12,7, 13,11, 15,11, 15,13, 18,13, 18,11, 20,11, 21,7, 25,7, 25,13, 37,13, 37,12, 42,12, 42,15, 47,15, 47,12, 50,12, 51,15, 49,15, 49,20, 50,24, 47,24, 47,20, 39,20, 39,19, 29,19, 29,24];
-        // Convertir a píxeles (centro de celda)
-        const floorPolygon = [];
-        for (let i = 0; i < floorRaw.length; i += 2) {
-            floorPolygon.push({
-                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
-                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
-            });
-        }
+        // ==================== ESTADO ====================
+        let COLS = Math.floor(MAP_WIDTH / CELL_SIZE);   // 55
+        let ROWS = Math.floor(MAP_HEIGHT / CELL_SIZE);  // 25
 
-        // Rectángulos bloqueantes (no pisables) - en celdas (col1,row1,col2,row2)
-        const blockedRects = [
-            { col1: 38, row1: 5, col2: 49, row2: 9 },   // escritorio
-            // placard como polígono (lo convertiremos en varios rectángulos o un polígono de bloqueo)
-        ];
-        // Placar polígono (col,fila): 5,1  9,1  9,10  4,24  0,24  0,11
-        const placardRaw = [5,1, 9,1, 9,10, 4,24, 0,24, 0,11];
-        const placardPolygon = [];
-        for (let i = 0; i < placardRaw.length; i += 2) {
-            placardPolygon.push({
-                x: placardRaw[i] * CELL_SIZE + CELL_SIZE/2,
-                y: placardRaw[i+1] * CELL_SIZE + CELL_SIZE/2
-            });
-        }
+        let camera = { x: 0, y: 0 };
+        let gameReady = false;
 
-        // Objetos interactivos
-        const interactiveObjects = [
-            {
-                id: 'escritorio',
-                type: 'rect', col1: 38, row1: 5, col2: 49, row2: 9,
-                interaction: { type: 'modal', text: '"No se puede disfrutar de un buen juego sin los recursos necesarios"\n(¡Aquí le das el control 8bitdo!)' },
-                required: true,
-                once: true
-            },
-            {
-                id: 'placard',
-                type: 'polygon', polygon: placardPolygon,
-                interaction: { type: 'thought', text: '¿Dónde estarán todos mis hoodies...?' }
-            },
-            {
-                id: 'alfombra',
-                type: 'rect', col1: 10, row1: 22, col2: 15, row2: 24,
-                interaction: { type: 'exit', target: 'plantaBaja', condition: () => gameState.flags.setupGamer }
-            }
-        ];
+        // Colisiones (vacías de momento)
+        let collisionRects = [];
 
-        // ==================== ESTADO DEL JUEGO ====================
-        let gameState = {
-            currentMap: 'dormitorio',
-            javi: {
-                col: 12, row: 7,  // cerca de la cama (ajustar)
-                faceDir: 'frente',
-                moving: false,
-                stepFrame: 0,
-                moveStartX: 0, moveStartY: 0,
-                moveEndX: 0, moveEndY: 0,
-                moveStartTime: 0
-            },
-            sol: null, // no aparece en día 1
-            flags: {
-                setupGamer: false,
-                placardTouched: false
-            },
-            camera: { x: 0, y: 0 },
-            activeDir: { dx: 0, dy: 0 },
-            gameReady: false,
-            scale: 1,
-            viewWidth: 0,
-            viewHeight: 0
+        // Javi y Sol
+        let javi = {
+            col: 27, row: 12,   // centro aproximado del mapa
+            faceDir: 'frente',
+            moving: false,
+            stepFrame: 0,
+            moveStartX: 0, moveStartY: 0,
+            moveEndX: 0, moveEndY: 0,
+            moveStartTime: 0
+        };
+        let sol = {
+            col: 26, row: 12,
+            faceDir: 'frente',
+            moving: false,
+            stepFrame: 0,
+            moveStartX: 0, moveStartY: 0,
+            moveEndX: 0, moveEndY: 0,
+            moveStartTime: 0,
+            sideVertical: -1
         };
 
-        // ==================== FUNCIONES DE UTILIDAD ====================
-        function pointInPolygon(px, py, polygon) {
-            let inside = false;
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const xi = polygon[i].x, yi = polygon[i].y;
-                const xj = polygon[j].x, yj = polygon[j].y;
-                const intersect = ((yi > py) !== (yj > py)) &&
-                    (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
-                if (intersect) inside = !inside;
-            }
-            return inside;
-        }
+        let activeDir = { dx: 0, dy: 0 };
 
-        function isWalkable(col, row) {
-            const px = col * CELL_SIZE + CELL_SIZE/2;
-            const py = row * CELL_SIZE + CELL_SIZE/2;
-            // Fuera de límites
-            if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-            // Dentro del polígono del piso?
-            if (!pointInPolygon(px, py, floorPolygon)) return false;
-            // Bloqueado por placard?
-            if (pointInPolygon(px, py, placardPolygon)) return false;
-            // Bloqueado por rectángulos?
-            for (let r of blockedRects) {
-                if (col >= r.col1 && col <= r.col2 && row >= r.row1 && row <= r.row2) return false;
-            }
-            return true;
-        }
-
-        function isCellBlocked(col, row) {
-            return !isWalkable(col, row);
-        }
-
+        // ==================== FUNCIONES ====================
         function getCellCenter(col, row) {
             return {
-                x: col * CELL_SIZE + CELL_SIZE/2,
+                x: col * CELL_SIZE + CELL_SIZE / 2,
                 y: row * CELL_SIZE + CELL_SIZE
             };
         }
 
-        // ==================== MOVIMIENTO ====================
+        function isCellBlocked(col, row) {
+            const cx = col * CELL_SIZE + CELL_SIZE/2;
+            const cy = row * CELL_SIZE + CELL_SIZE/2;
+            for (let r of collisionRects) {
+                if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) return true;
+            }
+            return false;
+        }
+
+        function canMoveTo(col, row) {
+            return col >= 0 && col < COLS && row >= 0 && row < ROWS && !isCellBlocked(col, row);
+        }
+
         function startMove(ch, targetCol, targetRow) {
             const start = getCellCenter(ch.col, ch.row);
             const end = getCellCenter(targetCol, targetRow);
@@ -372,193 +298,128 @@
         }
 
         function tryMoveJavi() {
-            const j = gameState.javi;
-            if (j.moving || !gameState.gameReady) return;
-            const dx = gameState.activeDir.dx, dy = gameState.activeDir.dy;
+            if (javi.moving || !gameReady) return;
+            const dx = activeDir.dx, dy = activeDir.dy;
             if (dx === 0 && dy === 0) return;
-            const nc = j.col + dx, nr = j.row + dy;
-            if (!isWalkable(nc, nr)) return;
+            const nc = javi.col + dx, nr = javi.row + dy;
+            if (!canMoveTo(nc, nr)) return;
 
-            if (dx > 0) j.faceDir = 'derecha';
-            else if (dx < 0) j.faceDir = 'izquierda';
-            else if (dy > 0) j.faceDir = 'frente';
-            else if (dy < 0) j.faceDir = 'atras';
+            if (dx > 0) javi.faceDir = 'derecha';
+            else if (dx < 0) javi.faceDir = 'izquierda';
+            else if (dy > 0) javi.faceDir = 'frente';
+            else if (dy < 0) javi.faceDir = 'atras';
 
-            startMove(j, nc, nr);
+            startMove(javi, nc, nr);
+            updateSolTarget();
             updateCamera();
-            checkExitZones();
+        }
+
+        function updateSolTarget() {
+            let tc, tr;
+            switch (javi.faceDir) {
+                case 'derecha': tc = javi.col - 1; tr = javi.row; sol.sideVertical = -1; break;
+                case 'izquierda': tc = javi.col + 1; tr = javi.row; sol.sideVertical = 1; break;
+                default: tc = javi.col + sol.sideVertical; tr = javi.row;
+            }
+            tc = Math.max(0, Math.min(COLS-1, tc));
+            tr = Math.max(0, Math.min(ROWS-1, tr));
+
+            if (isCellBlocked(tc, tr)) {
+                sol.faceDir = (sol.col === javi.col && sol.row === javi.row) ? 'frente' : javi.faceDir;
+                return;
+            }
+
+            sol.faceDir = (tc === javi.col && tr === javi.row) ? 'frente' : javi.faceDir;
+            if (!sol.moving && (sol.col !== tc || sol.row !== tr)) {
+                startMove(sol, tc, tr);
+            } else if (!sol.moving) {
+                sol.faceDir = (sol.col === javi.col && sol.row === javi.row) ? 'frente' : javi.faceDir;
+            }
+            sol.targetCol = tc; sol.targetRow = tr;
         }
 
         function updateCamera() {
-            const j = gameState.javi;
-            const jx = j.col * CELL_SIZE + CELL_SIZE/2;
-            const jy = j.row * CELL_SIZE + CELL_SIZE/2;
-            let cam = gameState.camera;
-            const viewW = gameState.viewWidth;
-            const viewH = gameState.viewHeight;
+            // Margen: 4 celdas = 80 píxeles desde el borde de la vista
+            const margin = 4 * CELL_SIZE;   // 80 px
 
-            let targetX = jx - viewW/2;
-            let targetY = jy - viewH/2;
+            // Posición central deseada (en píxeles del mundo)
+            const javiCenterX = javi.col * CELL_SIZE + CELL_SIZE/2;
+            const javiCenterY = javi.row * CELL_SIZE + CELL_SIZE/2;
 
-            // Margen
-            const margin = CAMERA_MARGIN;
-            if (jx - cam.x < margin) targetX = jx - margin;
-            else if (jx - cam.x > viewW - margin) targetX = jx - (viewW - margin);
-            if (jy - cam.y < margin) targetY = jy - margin;
-            else if (jy - cam.y > viewH - margin) targetY = jy - (viewH - margin);
+            // La cámara intenta mantener a Javi dentro de un rectángulo interior
+            let targetCamX = javiCenterX - VIEW_WIDTH/2;
+            let targetCamY = javiCenterY - VIEW_HEIGHT/2;
 
-            cam.x = Math.max(0, Math.min(targetX, MAP_WIDTH - viewW));
-            cam.y = Math.max(0, Math.min(targetY, MAP_HEIGHT - viewH));
+            // Aplicar margen: si Javi está cerca del borde izquierdo de la vista, la cámara se mueve
+            if (javiCenterX - camera.x < margin) {
+                targetCamX = javiCenterX - margin;
+            } else if (javiCenterX - camera.x > VIEW_WIDTH - margin) {
+                targetCamX = javiCenterX - (VIEW_WIDTH - margin);
+            }
+
+            if (javiCenterY - camera.y < margin) {
+                targetCamY = javiCenterY - margin;
+            } else if (javiCenterY - camera.y > VIEW_HEIGHT - margin) {
+                targetCamY = javiCenterY - (VIEW_HEIGHT - margin);
+            }
+
+            // Limitar a los bordes del mapa
+            camera.x = Math.max(0, Math.min(targetCamX, MAP_WIDTH - VIEW_WIDTH));
+            camera.y = Math.max(0, Math.min(targetCamY, MAP_HEIGHT - VIEW_HEIGHT));
         }
 
-        // ==================== INTERACCIONES ====================
-        function getNearbyInteractive() {
-            const j = gameState.javi;
-            // Buscar objetos interactivos a distancia 1 celda (adyacente o mismo)
-            for (let obj of interactiveObjects) {
-                if (obj.type === 'rect') {
-                    const {col1, row1, col2, row2} = obj;
-                    // Si Javi está en una celda adyacente (distancia <= 1 en chebyshev)
-                    const distCol = Math.max(0, Math.max(col1 - j.col - 1, j.col - col2 - 1));
-                    const distRow = Math.max(0, Math.max(row1 - j.row - 1, j.row - row2 - 1));
-                    if (distCol <= 0 && distRow <= 0) return obj;
-                } else if (obj.type === 'polygon') {
-                    // Verificar si Javi está adyacente al polígono (simplificado: si alguna celda del borde está a distancia 1)
-                    // Por ahora, verificar si el punto de Javi está dentro o a 1 celda del polígono
-                    const px = j.col * CELL_SIZE + CELL_SIZE/2;
-                    const py = j.row * CELL_SIZE + CELL_SIZE/2;
-                    // Verificar cercanía: si alguna arista del polígono está a menos de CELL_SIZE*1.5
-                    // Implementación sencilla: si pointInPolygon o distancia al polígono < CELL_SIZE*2
-                    if (pointInPolygon(px, py, obj.polygon)) return obj;
-                    // Si no, calcular distancia mínima a los bordes (omitimos por brevedad, asumiremos que el placard solo se activa si Javi está en celdas específicas)
-                    // Hardcodeamos celdas cercanas al placard: col entre 0-9, row entre 1-24, etc.
-                    if (j.col >= 0 && j.col <= 10 && j.row >= 1 && j.row <= 24) return obj;
+        function updateAnimation(ch, now) {
+            if (!ch.moving) return;
+            const elapsed = now - ch.moveStartTime;
+            const t = Math.min(elapsed / MOVE_DURATION, 1);
+            if (t >= 1) {
+                ch.moving = false;
+                ch.stepFrame = 0;
+                if (ch === javi && (activeDir.dx !== 0 || activeDir.dy !== 0)) {
+                    tryMoveJavi();
+                } else if (ch === sol) {
+                    updateSolTarget();
                 }
             }
-            return null;
-        }
-
-        function interactWithObject(obj) {
-            if (!obj) return;
-            const inter = obj.interaction;
-            if (inter.type === 'modal') {
-                showModal(inter.text, () => {
-                    if (obj.id === 'escritorio' && !gameState.flags.setupGamer) {
-                        gameState.flags.setupGamer = true;
-                        saveGame();
-                    }
-                });
-            } else if (inter.type === 'thought') {
-                showThought(inter.text);
-            }
-        }
-
-        function checkExitZones() {
-            const alfombra = interactiveObjects.find(o => o.id === 'alfombra');
-            const j = gameState.javi;
-            if (j.col >= alfombra.col1 && j.col <= alfombra.col2 &&
-                j.row >= alfombra.row1 && j.row <= alfombra.row2) {
-                // Mostrar diálogo de salida
-                if (!gameState.flags.setupGamer) {
-                    showModal('Todavía hay que explorar este espacio un poco más');
-                } else {
-                    showModal('¿Deseas salir de la habitación?', () => {
-                        transitionToMap('plantaBaja');
-                    }, true); // con opciones Sí/No
-                }
-            }
-        }
-
-        function showModal(text, onAccept, withOptions = false) {
-            const modal = document.createElement('div');
-            modal.className = 'modal';
-            let buttonsHTML = '';
-            if (withOptions) {
-                buttonsHTML = `<button id="modalYes">Sí</button><button id="modalNo">No</button>`;
-            } else {
-                buttonsHTML = `<button id="modalClose">Cerrar</button>`;
-            }
-            modal.innerHTML = `<div class="modal-content"><p>${text.replace(/\n/g,'<br>')}</p>${buttonsHTML}</div>`;
-            document.body.appendChild(modal);
-
-            const close = () => { modal.remove(); if (onAccept) onAccept(); };
-            if (withOptions) {
-                document.getElementById('modalYes').onclick = () => { close(); };
-                document.getElementById('modalNo').onclick = () => { modal.remove(); };
-            } else {
-                document.getElementById('modalClose').onclick = close;
-            }
-        }
-
-        function showThought(text) {
-            const bubble = document.createElement('div');
-            bubble.className = 'thought-bubble';
-            bubble.textContent = text;
-            const container = document.getElementById('game-container');
-            container.appendChild(bubble);
-            // Posicionar cerca del personaje (aproximado)
-            const j = gameState.javi;
-            const screenX = (j.col * CELL_SIZE + CELL_SIZE/2 - gameState.camera.x) * gameState.scale;
-            const screenY = (j.row * CELL_SIZE + CELL_SIZE/2 - gameState.camera.y) * gameState.scale;
-            bubble.style.left = screenX + 'px';
-            bubble.style.top = (screenY - 60) + 'px';
-            setTimeout(() => bubble.remove(), 3000);
-        }
-
-        function transitionToMap(mapId) {
-            // Pantalla negra con texto
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:black;color:white;display:flex;justify-content:center;align-items:center;font-size:24px;z-index:200;';
-            overlay.textContent = 'Bajando las escaleras...';
-            document.body.appendChild(overlay);
-            setTimeout(() => {
-                overlay.remove();
-                // Cambiar mapa (placeholder: reiniciar en dormitorio)
-                alert('Próximamente: Planta baja');
-                gameState.currentMap = mapId;
-                // Por ahora, volvemos al inicio
-                resetToDormitorio();
-            }, 2000);
-        }
-
-        function resetToDormitorio() {
-            gameState.javi.col = 12;
-            gameState.javi.row = 7;
-            gameState.javi.faceDir = 'frente';
-            gameState.javi.moving = false;
-            gameState.camera.x = 0;
-            gameState.camera.y = 0;
-            gameState.flags.setupGamer = false;
-            gameState.flags.placardTouched = false;
-            updateCamera();
-            saveGame();
         }
 
         // ==================== DIBUJO ====================
-        function drawScene() {
-            ctx.clearRect(0, 0, gameState.viewWidth, gameState.viewHeight);
-            const scale = gameState.scale;
-            ctx.save();
-            ctx.setTransform(scale, 0, 0, scale, -gameState.camera.x * scale, -gameState.camera.y * scale);
-
-            // Fondo
-            if (fondoHabitacion.complete) {
-                ctx.drawImage(fondoHabitacion, 0, 0, MAP_WIDTH, MAP_HEIGHT);
+        function drawBackground() {
+            if (fondo.complete && fondo.naturalWidth > 0) {
+                // Dibujar la imagen escalada al tamaño del mapa
+                ctx.drawImage(fondo, -camera.x, -camera.y, MAP_WIDTH, MAP_HEIGHT);
             } else {
                 ctx.fillStyle = '#2d6a4f';
-                ctx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
+                ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
             }
-
-            // Zonas de colisión (debug opcional)
-            // (omitimos para limpiar)
-
-            // Personaje
-            drawCharacter(gameState.javi, false);
-
-            ctx.restore();
+            // Si debug, mostrar colisiones (si las hay) y grilla
+            if (DEBUG) {
+                // Grilla tenue
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 0.5;
+                for (let c = 0; c <= COLS; c++) {
+                    const x = c * CELL_SIZE - camera.x;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, VIEW_HEIGHT);
+                    ctx.stroke();
+                }
+                for (let r = 0; r <= ROWS; r++) {
+                    const y = r * CELL_SIZE - camera.y;
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(VIEW_WIDTH, y);
+                    ctx.stroke();
+                }
+                // Colisiones
+                ctx.fillStyle = 'rgba(255,0,0,0.2)';
+                for (let r of collisionRects) {
+                    ctx.fillRect(r.x - camera.x, r.y - camera.y, r.w, r.h);
+                }
+            }
         }
 
-        function drawCharacter(ch, isSol = false) {
+        function drawChar(ch, isSol) {
             const dirMap = { frente:'Frente', atras:'Atras', izquierda:'Izquierda', derecha:'Derecha' };
             let key = (isSol ? 'sol' : 'javi') + dirMap[ch.faceDir];
             if (ch.moving) key += (ch.stepFrame % 2 === 0) ? '' : 'Caminando';
@@ -573,8 +434,10 @@
             } else {
                 const center = getCellCenter(ch.col, ch.row);
                 worldX = center.x;
-                worldY = center.y;
+                worldY = center.y + (isSol ? VERTICAL_OFFSET_SOL : 0);
             }
+            const screenX = worldX - camera.x;
+            const screenY = worldY - camera.y;
 
             const boxW = isSol ? SOL_DRAW_WIDTH : JAVI_DRAW_WIDTH;
             const boxH = isSol ? SOL_DRAW_HEIGHT : JAVI_DRAW_HEIGHT;
@@ -585,61 +448,75 @@
                 const drawH = img.naturalHeight * scale;
                 const offsetX = (boxW - drawW) / 2;
                 const offsetY = boxH - drawH;
-                ctx.drawImage(img, worldX - boxW/2 + offsetX, worldY - boxH + offsetY, drawW, drawH);
+                ctx.drawImage(img, screenX - boxW/2 + offsetX, screenY - boxH + offsetY, drawW, drawH);
             } else {
                 ctx.fillStyle = isSol ? '#f9a' : '#2b6';
-                ctx.fillRect(worldX - boxW/2, worldY - boxH, boxW, boxH);
+                ctx.fillRect(screenX - boxW/2, screenY - boxH, boxW, boxH);
             }
         }
+
+        // ==================== DEBUG: CLIC PARA CELDA ====================
+        canvas.addEventListener('click', (e) => {
+            if (!DEBUG || !gameReady) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = VIEW_WIDTH / rect.width;   // relación entre canvas lógico y CSS
+            const scaleY = VIEW_HEIGHT / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // Coordenadas del mundo
+            const worldX = clickX + camera.x;
+            const worldY = clickY + camera.y;
+            const col = Math.floor(worldX / CELL_SIZE);
+            const row = Math.floor(worldY / CELL_SIZE);
+
+            // Mostrar indicador
+            cellIndicator.style.display = 'block';
+            cellIndicator.style.left = (e.clientX - rect.left) + 'px';
+            cellIndicator.style.top = (e.clientY - rect.top) + 'px';
+            cellIndicator.textContent = `${col},${row}`;
+            setTimeout(() => { cellIndicator.style.display = 'none'; }, 1500);
+
+            console.log(`Celda: col=${col}, row=${row} (x=${worldX.toFixed(0)}, y=${worldY.toFixed(0)})`);
+        });
 
         // ==================== BUCLE ====================
         let lastAnimFrame = 0;
         function loop(now) {
-            if (!gameState.gameReady) {
-                requestAnimationFrame(loop);
-                return;
-            }
             if (now - lastAnimFrame >= ANIM_FRAME_DURATION) {
                 lastAnimFrame = now;
-                if (gameState.javi.moving) gameState.javi.stepFrame++;
+                if (javi.moving) javi.stepFrame++;
+                if (sol.moving) sol.stepFrame++;
             }
-            // Actualizar animación de movimiento
-            const j = gameState.javi;
-            if (j.moving) {
-                const elapsed = now - j.moveStartTime;
-                if (elapsed >= MOVE_DURATION) {
-                    j.moving = false;
-                    j.stepFrame = 0;
-                    if (gameState.activeDir.dx !== 0 || gameState.activeDir.dy !== 0) {
-                        tryMoveJavi();
-                    }
-                }
-            } else if (gameState.activeDir.dx !== 0 || gameState.activeDir.dy !== 0) {
+            updateAnimation(javi, now);
+            updateAnimation(sol, now);
+
+            if (!javi.moving && (activeDir.dx !== 0 || activeDir.dy !== 0)) {
                 tryMoveJavi();
             }
 
-            drawScene();
+            ctx.clearRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+            drawBackground();
+            drawChar(javi, false);
+            drawChar(sol, true);
+
             requestAnimationFrame(loop);
         }
 
-        // ==================== AJUSTE DE TAMAÑO ====================
-        function resizeCanvas() {
-            const container = document.getElementById('game-container');
-            const w = container.clientWidth;
-            const h = container.clientHeight;
-            gameState.viewWidth = w;
-            gameState.viewHeight = h;
-            canvas.width = w;
-            canvas.height = h;
-            // Escala uniforme basada en altura
-            gameState.scale = h / MAP_HEIGHT;
-            updateCamera();
-        }
+        // ==================== INICIALIZACIÓN ====================
+        canvas.width = VIEW_WIDTH;
+        canvas.height = VIEW_HEIGHT;
 
-        window.addEventListener('resize', resizeCanvas);
+        // Posicionar a Javi en el centro del mapa grande
+        javi.col = Math.floor(COLS / 2);
+        javi.row = Math.floor(ROWS / 2);
+        sol.col = javi.col - 1;
+        sol.row = javi.row;
+        updateCamera();
+        gameReady = true;
 
-        // ==================== CONTROLES ====================
-        function setupControls() {
+        // ==================== CONTROLES TÁCTILES ====================
+        function setupTouchControls() {
             const btnUp = document.getElementById('btnUp');
             const btnDown = document.getElementById('btnDown');
             const btnLeft = document.getElementById('btnLeft');
@@ -650,37 +527,49 @@
             function addDirBtn(btn, dx, dy) {
                 btn.addEventListener('pointerdown', (e) => {
                     e.preventDefault();
-                    gameState.activeDir.dx = dx;
-                    gameState.activeDir.dy = dy;
+                    e.stopPropagation();
+                    activeDir.dx = dx;
+                    activeDir.dy = dy;
                 });
                 btn.addEventListener('pointerup', (e) => {
                     e.preventDefault();
-                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy) {
-                        gameState.activeDir.dx = 0;
-                        gameState.activeDir.dy = 0;
+                    if (activeDir.dx === dx && activeDir.dy === dy) {
+                        activeDir.dx = 0;
+                        activeDir.dy = 0;
                     }
                 });
                 btn.addEventListener('pointerleave', (e) => {
-                    if (gameState.activeDir.dx === dx && gameState.activeDir.dy === dy) {
-                        gameState.activeDir.dx = 0;
-                        gameState.activeDir.dy = 0;
+                    if (activeDir.dx === dx && activeDir.dy === dy) {
+                        activeDir.dx = 0;
+                        activeDir.dy = 0;
                     }
                 });
+                // Prevenir menú contextual
+                btn.addEventListener('contextmenu', (e) => e.preventDefault());
             }
             addDirBtn(btnUp, 0, -1);
             addDirBtn(btnDown, 0, 1);
             addDirBtn(btnLeft, -1, 0);
             addDirBtn(btnRight, 1, 0);
 
-            btnA.addEventListener('click', () => {
-                const obj = getNearbyInteractive();
-                if (obj) interactWithObject(obj);
+            // Botón A (interactuar – placeholder)
+            btnA.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log('A presionado (interactuar)');
+                // Aquí luego activaremos la interacción con el objeto cercano
             });
-            btnB.addEventListener('click', () => {
-                // Cerrar modales o cancelar (implementación básica: cerrar último modal)
-                const modals = document.querySelectorAll('.modal');
-                if (modals.length > 0) modals[modals.length-1].remove();
+            btnA.addEventListener('contextmenu', (e) => e.preventDefault());
+
+            // Botón B (correr/cancelar – placeholder)
+            btnB.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                // correr
             });
+            btnB.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                // dejar de correr
+            });
+            btnB.addEventListener('contextmenu', (e) => e.preventDefault());
         }
 
         // ==================== PANTALLA COMPLETA ====================
@@ -692,74 +581,33 @@
             }
         });
 
-        // ==================== TECLADO (para debug) ====================
+        // ==================== TECLADO ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
                 switch (e.key) {
-                    case 'ArrowLeft': gameState.activeDir.dx = -1; gameState.activeDir.dy = 0; break;
-                    case 'ArrowRight': gameState.activeDir.dx = 1; gameState.activeDir.dy = 0; break;
-                    case 'ArrowUp': gameState.activeDir.dx = 0; gameState.activeDir.dy = -1; break;
-                    case 'ArrowDown': gameState.activeDir.dx = 0; gameState.activeDir.dy = 1; break;
+                    case 'ArrowLeft': activeDir.dx = -1; activeDir.dy = 0; break;
+                    case 'ArrowRight': activeDir.dx = 1; activeDir.dy = 0; break;
+                    case 'ArrowUp': activeDir.dx = 0; activeDir.dy = -1; break;
+                    case 'ArrowDown': activeDir.dx = 0; activeDir.dy = 1; break;
                 }
             }
         });
         window.addEventListener('keyup', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
-                if ((e.key === 'ArrowLeft' && gameState.activeDir.dx === -1) ||
-                    (e.key === 'ArrowRight' && gameState.activeDir.dx === 1) ||
-                    (e.key === 'ArrowUp' && gameState.activeDir.dy === -1) ||
-                    (e.key === 'ArrowDown' && gameState.activeDir.dy === 1)) {
-                    gameState.activeDir.dx = 0;
-                    gameState.activeDir.dy = 0;
+                if ((e.key === 'ArrowLeft' && activeDir.dx === -1) ||
+                    (e.key === 'ArrowRight' && activeDir.dx === 1) ||
+                    (e.key === 'ArrowUp' && activeDir.dy === -1) ||
+                    (e.key === 'ArrowDown' && activeDir.dy === 1)) {
+                    activeDir.dx = 0;
+                    activeDir.dy = 0;
                 }
             }
         });
 
-        // ==================== GUARDADO ====================
-        function saveGame() {
-            const data = {
-                map: gameState.currentMap,
-                javi: { col: gameState.javi.col, row: gameState.javi.row, faceDir: gameState.javi.faceDir },
-                flags: gameState.flags
-            };
-            localStorage.setItem('pokeAmorSave', JSON.stringify(data));
-        }
-        function loadGame() {
-            const raw = localStorage.getItem('pokeAmorSave');
-            if (raw) {
-                const data = JSON.parse(raw);
-                gameState.currentMap = data.map || 'dormitorio';
-                gameState.javi.col = data.javi.col;
-                gameState.javi.row = data.javi.row;
-                gameState.javi.faceDir = data.javi.faceDir || 'frente';
-                gameState.flags = data.flags || { setupGamer: false };
-            }
-        }
-
-        // ==================== INICIO ====================
-        function init() {
-            loadGame();
-            setupControls();
-            resizeCanvas();
-            gameState.gameReady = true;
-            updateCamera();
-            requestAnimationFrame(loop);
-        }
-
-        // Ajuste inicial cuando cargan las imágenes
-        let imagesLoaded = 0;
-        function checkAllLoaded() {
-            imagesLoaded++;
-            if (imagesLoaded >= 2) { // fondo + al menos un sprite
-                // no es necesario esperar todos
-            }
-        }
-        fondoHabitacion.onload = checkAllLoaded;
-        // No esperamos a todos los sprites, el juego arranca igual
-
-        window.addEventListener('load', init);
+        setupTouchControls();
+        requestAnimationFrame(loop);
     })();
 </script>
 </body>
