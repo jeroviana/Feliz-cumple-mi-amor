@@ -33,10 +33,8 @@
         }
         canvas {
             display: block;
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
             image-rendering: crisp-edges;
+            /* Sin object-fit, el tamaño lo define JS */
         }
         /* Botón pantalla completa */
         #fullscreen-btn {
@@ -258,7 +256,7 @@
         const MOVE_DURATION = 200;
         const ANIM_FRAME_DURATION = 120;
         const CAMERA_MARGIN = 4 * CELL_SIZE;
-        const CAMERA_SMOOTH = 0.15; // suavizado de cámara
+        const CAMERA_SMOOTH = 0.25; // más reactivo
 
         const JAVI_DRAW_WIDTH = 88;
         const JAVI_DRAW_HEIGHT = 140;
@@ -286,19 +284,21 @@
 
         // ==================== POLÍGONO DEL PISO ====================
         const floorRaw = [11,6, 12,6, 12,11, 14,11, 14,13, 17,13, 17,11, 19,11, 19,6, 22,6, 24,6, 24,13, 36,13, 36,12, 37,11, 41,11, 41,15, 45,15, 45,12, 47,12, 48,14, 47,15, 47,20, 48,24, 45,23, 45,20, 40,20, 39,19, 30,19, 28,24, 7,24, 10,24, 11,6];
-        const floorPolygon = floorRaw.reduce((acc, val, idx) => {
-            if (idx % 2 === 0) acc.push({ x: val * CELL_SIZE + CELL_SIZE/2, y: floorRaw[idx+1] * CELL_SIZE + CELL_SIZE/2 });
-            return acc;
-        }, []).filter((_, i) => i < floorRaw.length/2);
+        const floorPolygon = [];
+        for (let i = 0; i < floorRaw.length; i += 2) {
+            floorPolygon.push({
+                x: floorRaw[i] * CELL_SIZE + CELL_SIZE/2,
+                y: floorRaw[i+1] * CELL_SIZE + CELL_SIZE/2
+            });
+        }
 
-        // Objetos interactivos
+        // Objetos interactivos (aseguramos que estén sobre el piso)
         const interactiveObjects = [
             {
                 id: 'escritorio',
                 type: 'rect', col1: 38, row1: 5, col2: 49, row2: 9,
                 interaction: { type: 'modal', text: '"No se puede disfrutar de un buen juego sin los recursos necesarios"' },
-                required: true,
-                once: true
+                required: true, once: true
             },
             {
                 id: 'placard',
@@ -390,7 +390,6 @@
             else if (dy < 0) j.faceDir = 'atras';
 
             startMove(j, nc, nr);
-            checkExitZones();
         }
 
         function updateCamera() {
@@ -412,7 +411,6 @@
             targetX = Math.max(0, Math.min(targetX, MAP_WIDTH - viewW));
             targetY = Math.max(0, Math.min(targetY, MAP_HEIGHT - viewH));
 
-            // Interpolación suave
             gameState.camera.x += (targetX - gameState.camera.x) * CAMERA_SMOOTH;
             gameState.camera.y += (targetY - gameState.camera.y) * CAMERA_SMOOTH;
         }
@@ -456,10 +454,6 @@
             }
         }
 
-        function checkExitZones() {
-            // No automático; se usa interactuar con A
-        }
-
         function showModal(text, onAccept, withOptions = false) {
             const modal = document.createElement('div');
             modal.className = 'modal';
@@ -501,7 +495,6 @@
                 gameState.flags.setupGamer = false;
                 updateCamera();
                 saveGame();
-                // Mostrar botón para volver (solo pruebas)
                 backBtn.style.display = 'block';
             }, 2000);
         }
@@ -533,7 +526,7 @@
             drawCharacter(gameState.javi, false);
             ctx.restore();
 
-            // Actualizar brillo del botón A
+            // Brillo del botón A
             if (isNearInteractive()) {
                 btnA.classList.add('glow');
             } else {
@@ -603,21 +596,32 @@
         // ==================== AJUSTE DE VENTANA ====================
         function resizeCanvas() {
             const container = document.getElementById('game-container');
-            const w = container.clientWidth;
-            const h = container.clientHeight;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Forzar que el canvas use toda la altura del contenedor
+            canvas.height = containerHeight;
+            // Ancho proporcional al mapa (MAP_WIDTH / MAP_HEIGHT)
             const mapRatio = MAP_WIDTH / MAP_HEIGHT;
-            if (w / h > mapRatio) {
-                canvas.width = h * mapRatio;
-                canvas.height = h;
+            canvas.width = containerHeight * mapRatio;
+
+            // Si el canvas es más ancho que el contenedor, permitimos scroll horizontal
+            // (el canvas se desborda, pero el contenedor tiene overflow: hidden, así que la cámara se encarga)
+            // Si es más angosto, lo centramos con margen automático
+            if (canvas.width <= containerWidth) {
+                canvas.style.margin = '0 auto';
             } else {
-                canvas.width = w;
-                canvas.height = w / mapRatio;
+                canvas.style.margin = '0';
             }
+
             gameState.viewWidth = canvas.width;
             gameState.viewHeight = canvas.height;
             updateCamera();
         }
+
         window.addEventListener('resize', resizeCanvas);
+        // También al cambiar a pantalla completa
+        document.addEventListener('fullscreenchange', resizeCanvas);
 
         // ==================== CONTROLES ====================
         function setupControls() {
@@ -655,7 +659,6 @@
                 if (modals.length) modals[modals.length-1].remove();
             });
 
-            // Botón volver (pruebas)
             backBtn.addEventListener('click', () => {
                 gameState.currentMap = 'dormitorio';
                 gameState.javi.col = 33;
@@ -671,8 +674,11 @@
 
         // ==================== PANTALLA COMPLETA ====================
         document.getElementById('fullscreen-btn').addEventListener('click', () => {
-            if (document.fullscreenElement) document.exitFullscreen();
-            else document.documentElement.requestFullscreen();
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                document.documentElement.requestFullscreen();
+            }
         });
 
         // ==================== TECLADO ====================
