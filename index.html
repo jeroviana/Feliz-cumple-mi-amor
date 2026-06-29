@@ -14,7 +14,7 @@
             -webkit-touch-callout: none;
         }
         body {
-            background: #0a1f1a;
+            background: #000;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -36,8 +36,8 @@
             border: 2px solid #ffb347;
             border-radius: 12px;
             image-rendering: crisp-edges;
-            max-width: 100%;
-            max-height: 100%;
+            width: 100%;
+            height: 100%;
             object-fit: contain;
             background: black;
         }
@@ -60,6 +60,7 @@
             cursor: pointer;
             z-index: 20;
             transition: 0.2s;
+            touch-action: manipulation;
         }
         #fullscreen-btn:hover {
             background: rgba(255,255,255,0.3);
@@ -94,7 +95,7 @@
             justify-content: center;
             cursor: pointer;
             transition: 0.05s;
-            touch-action: manipulation;
+            touch-action: none;
             -webkit-tap-highlight-color: transparent;
         }
         .dpad button:active {
@@ -111,9 +112,8 @@
             bottom: 30px;
             right: 30px;
             display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 12px;
+            flex-direction: row;   /* ahora horizontal */
+            gap: 16px;
             pointer-events: auto;
         }
         .action-btns button {
@@ -129,12 +129,25 @@
             text-shadow: 0 0 6px black;
             cursor: pointer;
             transition: 0.05s;
-            touch-action: manipulation;
+            touch-action: none;
             -webkit-tap-highlight-color: transparent;
         }
         .action-btns button:active {
             background: rgba(255,200,120,0.5);
             transform: scale(0.9);
+        }
+        /* Indicador de celda (debug) */
+        #cell-indicator {
+            position: absolute;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 30;
+            display: none;
+            transform: translate(-50%, -50%);
         }
     </style>
 </head>
@@ -142,6 +155,7 @@
 <div id="game-container">
     <canvas id="gameCanvas"></canvas>
     <button id="fullscreen-btn" title="Pantalla completa">⛶</button>
+    <div id="cell-indicator"></div>
     <div class="touch-controls">
         <div class="dpad" id="dpad">
             <button class="empty"></button>
@@ -165,12 +179,33 @@
     (function() {
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const cellIndicator = document.getElementById('cell-indicator');
 
-        // ==================== IMAGEN DE FONDO ====================
+        // ==================== CONFIGURACIÓN ====================
+        const DEBUG = true;   // modo debug (para mapear celdas)
+
+        // Dimensiones lógicas del canvas (ventana visible)
+        const VIEW_WIDTH = 550;
+        const VIEW_HEIGHT = 252;
+
+        // Dimensiones del mapa (más grande que la vista)
+        const MAP_WIDTH = 1100;   // el doble de ancho
+        const MAP_HEIGHT = 504;   // el doble de alto
+
+        const CELL_SIZE = 20;          // celdas pequeñas
+        const MOVE_DURATION = 250;    // ms por paso
+        const ANIM_FRAME_DURATION = 150;
+
+        const JAVI_DRAW_WIDTH = 44;
+        const JAVI_DRAW_HEIGHT = 70;
+        const SOL_DRAW_WIDTH = 40;
+        const SOL_DRAW_HEIGHT = 63;
+        const VERTICAL_OFFSET_SOL = 0;
+
+        // ==================== IMÁGENES ====================
         const fondo = new Image();
         fondo.src = 'https://i.postimg.cc/BnqYsmvg/Habitacion-diminuta.png';
 
-        // ==================== SPRITES ====================
         const SPRITE_URLS = {
             javiFrente: 'https://i.postimg.cc/s2ZVkrzx/JAVIF.png',
             javiFrenteCaminando: 'https://i.postimg.cc/cJ8spSW6/JAVIFC-(2).png',
@@ -196,29 +231,19 @@
             loadedImages[key] = img;
         });
 
-        // ==================== DIMENSIONES ====================
-        const CELL_SIZE = 20;                 // celdas más pequeñas
-        const MOVE_DURATION = 250;           // ms por paso (más lento)
-        const ANIM_FRAME_DURATION = 150;     // alternancia de sprites
-        const JAVI_DRAW_WIDTH = 44;
-        const JAVI_DRAW_HEIGHT = 70;
-        const SOL_DRAW_WIDTH = 40;
-        const SOL_DRAW_HEIGHT = 63;
-        const VERTICAL_OFFSET_SOL = 0;
+        // ==================== ESTADO ====================
+        let COLS = Math.floor(MAP_WIDTH / CELL_SIZE);   // 55
+        let ROWS = Math.floor(MAP_HEIGHT / CELL_SIZE);  // 25
 
-        let COLS, ROWS;
+        let camera = { x: 0, y: 0 };
         let gameReady = false;
 
-        // Cámara (preparada para scroll, aunque ahora el mapa = canvas)
-        let camera = { x: 0, y: 0 };
-        let mapWidth, mapHeight;   // se igualan al tamaño del fondo
-
-        // Colisiones (por ahora vacías)
+        // Colisiones (vacías de momento)
         let collisionRects = [];
 
-        // ==================== ESTADO ====================
+        // Javi y Sol
         let javi = {
-            col: 13, row: 6,
+            col: 27, row: 12,   // centro aproximado del mapa
             faceDir: 'frente',
             moving: false,
             stepFrame: 0,
@@ -227,7 +252,7 @@
             moveStartTime: 0
         };
         let sol = {
-            col: 12, row: 6,
+            col: 26, row: 12,
             faceDir: 'frente',
             moving: false,
             stepFrame: 0,
@@ -314,12 +339,33 @@
         }
 
         function updateCamera() {
-            // Centrar cámara en Javi (en píxeles)
-            let targetX = javi.col * CELL_SIZE + CELL_SIZE/2 - canvas.width/2;
-            let targetY = javi.row * CELL_SIZE + CELL_SIZE/2 - canvas.height/2;
+            // Margen: 4 celdas = 80 píxeles desde el borde de la vista
+            const margin = 4 * CELL_SIZE;   // 80 px
+
+            // Posición central deseada (en píxeles del mundo)
+            const javiCenterX = javi.col * CELL_SIZE + CELL_SIZE/2;
+            const javiCenterY = javi.row * CELL_SIZE + CELL_SIZE/2;
+
+            // La cámara intenta mantener a Javi dentro de un rectángulo interior
+            let targetCamX = javiCenterX - VIEW_WIDTH/2;
+            let targetCamY = javiCenterY - VIEW_HEIGHT/2;
+
+            // Aplicar margen: si Javi está cerca del borde izquierdo de la vista, la cámara se mueve
+            if (javiCenterX - camera.x < margin) {
+                targetCamX = javiCenterX - margin;
+            } else if (javiCenterX - camera.x > VIEW_WIDTH - margin) {
+                targetCamX = javiCenterX - (VIEW_WIDTH - margin);
+            }
+
+            if (javiCenterY - camera.y < margin) {
+                targetCamY = javiCenterY - margin;
+            } else if (javiCenterY - camera.y > VIEW_HEIGHT - margin) {
+                targetCamY = javiCenterY - (VIEW_HEIGHT - margin);
+            }
+
             // Limitar a los bordes del mapa
-            camera.x = Math.max(0, Math.min(targetX, mapWidth - canvas.width));
-            camera.y = Math.max(0, Math.min(targetY, mapHeight - canvas.height));
+            camera.x = Math.max(0, Math.min(targetCamX, MAP_WIDTH - VIEW_WIDTH));
+            camera.y = Math.max(0, Math.min(targetCamY, MAP_HEIGHT - VIEW_HEIGHT));
         }
 
         function updateAnimation(ch, now) {
@@ -340,11 +386,36 @@
         // ==================== DIBUJO ====================
         function drawBackground() {
             if (fondo.complete && fondo.naturalWidth > 0) {
-                // Dibujar el fondo desplazado según la cámara
-                ctx.drawImage(fondo, -camera.x, -camera.y);
+                // Dibujar la imagen escalada al tamaño del mapa
+                ctx.drawImage(fondo, -camera.x, -camera.y, MAP_WIDTH, MAP_HEIGHT);
             } else {
                 ctx.fillStyle = '#2d6a4f';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+            }
+            // Si debug, mostrar colisiones (si las hay) y grilla
+            if (DEBUG) {
+                // Grilla tenue
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 0.5;
+                for (let c = 0; c <= COLS; c++) {
+                    const x = c * CELL_SIZE - camera.x;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, VIEW_HEIGHT);
+                    ctx.stroke();
+                }
+                for (let r = 0; r <= ROWS; r++) {
+                    const y = r * CELL_SIZE - camera.y;
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(VIEW_WIDTH, y);
+                    ctx.stroke();
+                }
+                // Colisiones
+                ctx.fillStyle = 'rgba(255,0,0,0.2)';
+                for (let r of collisionRects) {
+                    ctx.fillRect(r.x - camera.x, r.y - camera.y, r.w, r.h);
+                }
             }
         }
 
@@ -354,7 +425,6 @@
             if (ch.moving) key += (ch.stepFrame % 2 === 0) ? '' : 'Caminando';
             const img = loadedImages[key];
 
-            // Posición en el mundo (relativa a la cámara)
             let worldX, worldY;
             if (ch.moving) {
                 const now = performance.now();
@@ -385,6 +455,31 @@
             }
         }
 
+        // ==================== DEBUG: CLIC PARA CELDA ====================
+        canvas.addEventListener('click', (e) => {
+            if (!DEBUG || !gameReady) return;
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = VIEW_WIDTH / rect.width;   // relación entre canvas lógico y CSS
+            const scaleY = VIEW_HEIGHT / rect.height;
+            const clickX = (e.clientX - rect.left) * scaleX;
+            const clickY = (e.clientY - rect.top) * scaleY;
+
+            // Coordenadas del mundo
+            const worldX = clickX + camera.x;
+            const worldY = clickY + camera.y;
+            const col = Math.floor(worldX / CELL_SIZE);
+            const row = Math.floor(worldY / CELL_SIZE);
+
+            // Mostrar indicador
+            cellIndicator.style.display = 'block';
+            cellIndicator.style.left = (e.clientX - rect.left) + 'px';
+            cellIndicator.style.top = (e.clientY - rect.top) + 'px';
+            cellIndicator.textContent = `${col},${row}`;
+            setTimeout(() => { cellIndicator.style.display = 'none'; }, 1500);
+
+            console.log(`Celda: col=${col}, row=${row} (x=${worldX.toFixed(0)}, y=${worldY.toFixed(0)})`);
+        });
+
         // ==================== BUCLE ====================
         let lastAnimFrame = 0;
         function loop(now) {
@@ -400,7 +495,7 @@
                 tryMoveJavi();
             }
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
             drawBackground();
             drawChar(javi, false);
             drawChar(sol, true);
@@ -409,21 +504,16 @@
         }
 
         // ==================== INICIALIZACIÓN ====================
-        fondo.onload = () => {
-            canvas.width = fondo.naturalWidth;   // 550
-            canvas.height = fondo.naturalHeight; // 252
-            mapWidth = canvas.width;
-            mapHeight = canvas.height;
-            COLS = Math.floor(mapWidth / CELL_SIZE);
-            ROWS = Math.floor(mapHeight / CELL_SIZE);
-            // Colocar a Javi en el centro del mapa
-            javi.col = Math.floor(COLS / 2);
-            javi.row = Math.floor(ROWS / 2) + 1;
-            sol.col = javi.col - 1;
-            sol.row = javi.row;
-            updateCamera();
-            gameReady = true;
-        };
+        canvas.width = VIEW_WIDTH;
+        canvas.height = VIEW_HEIGHT;
+
+        // Posicionar a Javi en el centro del mapa grande
+        javi.col = Math.floor(COLS / 2);
+        javi.row = Math.floor(ROWS / 2);
+        sol.col = javi.col - 1;
+        sol.row = javi.row;
+        updateCamera();
+        gameReady = true;
 
         // ==================== CONTROLES TÁCTILES ====================
         function setupTouchControls() {
@@ -435,9 +525,9 @@
             const btnB = document.getElementById('btnB');
 
             function addDirBtn(btn, dx, dy) {
-                let interval;
                 btn.addEventListener('pointerdown', (e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     activeDir.dx = dx;
                     activeDir.dy = dy;
                 });
@@ -454,20 +544,32 @@
                         activeDir.dy = 0;
                     }
                 });
+                // Prevenir menú contextual
+                btn.addEventListener('contextmenu', (e) => e.preventDefault());
             }
             addDirBtn(btnUp, 0, -1);
             addDirBtn(btnDown, 0, 1);
             addDirBtn(btnLeft, -1, 0);
             addDirBtn(btnRight, 1, 0);
 
-            // Botón A para interactuar (por ahora placeholder)
-            btnA.addEventListener('click', () => {
+            // Botón A (interactuar – placeholder)
+            btnA.addEventListener('click', (e) => {
+                e.preventDefault();
                 console.log('A presionado (interactuar)');
+                // Aquí luego activaremos la interacción con el objeto cercano
             });
+            btnA.addEventListener('contextmenu', (e) => e.preventDefault());
 
-            // Botón B para correr o cancelar (placeholder)
-            btnB.addEventListener('pointerdown', () => { /* correr */ });
-            btnB.addEventListener('pointerup', () => { /* dejar de correr */ });
+            // Botón B (correr/cancelar – placeholder)
+            btnB.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                // correr
+            });
+            btnB.addEventListener('pointerup', (e) => {
+                e.preventDefault();
+                // dejar de correr
+            });
+            btnB.addEventListener('contextmenu', (e) => e.preventDefault());
         }
 
         // ==================== PANTALLA COMPLETA ====================
@@ -479,7 +581,7 @@
             }
         });
 
-        // ==================== TECLADO (para desarrollo) ====================
+        // ==================== TECLADO ====================
         window.addEventListener('keydown', e => {
             if (e.key.startsWith('Arrow')) {
                 e.preventDefault();
